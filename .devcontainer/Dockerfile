@@ -13,6 +13,7 @@ RUN apt-get update \
 		git \
 		build-essential \
 		python3 \
+		openjdk-17-jre-headless \
 		bash \
 		sudo \
 	&& mkdir -p /etc/apt/keyrings \

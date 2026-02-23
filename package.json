@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "exec": "tsx src/index.ts",
+    "gen": "antlr4ng -Dlanguage=TypeScript -o src/generated -visitor -no-listener -Xexact-output-dir src/grammar/Ekzemplo2Lexer.g4 src/grammar/Ekzemplo2Parser.g4",
     "test": "npm run typecheck",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -17,9 +18,12 @@
     "url": "https://github.com/NovanMondon/Ekzemplo2/issues"
   },
   "homepage": "https://github.com/NovanMondon/Ekzemplo2#readme",
+  "dependencies": {
+    "antlr4ng": "^3.0.16"
+  },
   "devDependencies": {
     "@types/node": "^25.3.0",
-    "rimraf": "^6.1.3",
+    "antlr4ng-cli": "^2.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
