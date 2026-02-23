@@ -44,4 +44,23 @@ npm run exec -- path/to/file.ekz2
 printf '// hello\n' | npm run exec
 ```
 
-現状の文法は `program: EOF;` のみなので、トークン（例: `x` や `123`）がある入力は構文エラーになります。
+現状の文法は最小構成で、まずは `int <name>() { return <int>; }` の形のみを受理します（今後拡張予定）。
+
+### LLVM IR 生成 / コンパイル（開発中）
+
+`src/main.ts` はパースに加えて、最小機能として LLVM IR（`.ll`）生成と `clang` によるバイナリ生成もできます。
+
+前提:
+
+- `clang` / `llvm` / `lld` がインストールされていること（devcontainer では Dockerfile で導入済み）
+
+```bash
+# LLVM IR を output/ に出力（例: output/test1.ll）
+npm run exec -- --emit-llvm source/test1.ekz2
+
+# LLVM IR を出して、そのまま clang でバイナリ生成（例: output/test1）
+npm run exec -- --compile source/test1.ekz2
+
+# 出力先ディレクトリや名前を指定
+npm run exec -- --compile --out-dir output --out-name a.out source/test1.ekz2
+```

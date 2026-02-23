@@ -12,6 +12,9 @@ RUN apt-get update \
 		gnupg \
 		git \
 		build-essential \
+		clang \
+		llvm \
+		lld \
 		python3 \
 		openjdk-17-jre-headless \
 		bash \
