@@ -10,6 +10,19 @@
 
 ## 開発者・AGENT向け
 
+### Lint / Format
+
+```bash
+# Lint（チェックのみ）
+npm run lint
+
+# Lint（自動修正）
+npm run lint:fix
+
+# Format（Prettierで整形）
+npm run format
+```
+
 ### ANTLR
 
 - 文法ファイル: `grammar/`（`Ekzemplo2Lexer.g4`, `Ekzemplo2Parser.g4`）

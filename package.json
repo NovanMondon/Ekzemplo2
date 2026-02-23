@@ -6,6 +6,10 @@
   "scripts": {
     "exec": "tsx src/index.ts",
     "gen": "antlr4ng -Dlanguage=TypeScript -o src/generated -visitor -no-listener -Xexact-output-dir grammar/Ekzemplo2Lexer.g4 grammar/Ekzemplo2Parser.g4",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
     "test": "npm run typecheck",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -22,9 +26,15 @@
     "antlr4ng": "^3.0.16"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.3.0",
     "antlr4ng-cli": "^2.0.0",
+    "eslint": "^10.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.3.0",
+    "prettier": "^3.8.1",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.0"
   }
 }

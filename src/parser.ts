@@ -1,8 +1,4 @@
 import * as antlr from "antlr4ng";
-import { readFile } from "node:fs/promises";
-
-import { Ekzemplo2Lexer } from "./generated/Ekzemplo2Lexer.js";
-import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
 
 export class ThrowingErrorListener extends antlr.BaseErrorListener {
 	public override syntaxError(
