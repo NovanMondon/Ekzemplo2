@@ -6,7 +6,7 @@ import path from "node:path";
 import { Ekzemplo2Lexer } from "./generated/Ekzemplo2Lexer.js";
 import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
 import { buildAst, ThrowingErrorListener } from "./parser.js";
-import { emitLlvmIR } from "./llvm.js";
+import { emitLlvmIR } from "./llvm/program.js";
 
 export const main = async (): Promise<void> => {
 	const { filePath, options } = parseArgs(process.argv.slice(2));
