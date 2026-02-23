@@ -8,6 +8,8 @@ BLOCK_COMMENT: '/*' .*? '*/' -> skip;
 KW_INT: 'int';
 KW_RETURN: 'return';
 
+PLUS: '+';
+
 LPAREN: '(';
 RPAREN: ')';
 LBRACE: '{';

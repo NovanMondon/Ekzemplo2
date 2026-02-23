@@ -32,7 +32,7 @@ export const main = async (): Promise<void> => {
 		const llPath = path.join(options.outDir, `${baseName}.ll`);
 
 		const ast = buildAst(tree);
-		const llvmIR = emitLlvmIR(ast, path.basename(filePath));
+		const llvmIR = emitLlvmIR(ast, { sourceFilename: path.basename(filePath) });
 		await writeFile(llPath, llvmIR, "utf8");
 		console.log(`emit: ${llPath}`);
 

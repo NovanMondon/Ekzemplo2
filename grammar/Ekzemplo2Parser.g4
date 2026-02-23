@@ -5,7 +5,7 @@ options {
 }
 
 program
-  : functionDefinition EOF
+  : functionDefinition+ EOF
   ;
 
 functionDefinition
@@ -17,5 +17,19 @@ block
   ;
 
 returnStatement
-  : KW_RETURN INT SEMI
+  : KW_RETURN expr SEMI
+  ;
+
+expr
+  : additiveExpr
+  ;
+
+additiveExpr
+  : primaryExpr (PLUS primaryExpr)*
+  ;
+
+primaryExpr
+  : INT
+  | IDENT
+  | LPAREN expr RPAREN
   ;

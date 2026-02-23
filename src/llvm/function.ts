@@ -1,9 +1,11 @@
 import type { FunctionDecl } from "../ast.js";
-import { lowerReturnValue } from "./returnStmt.js";
+import type { EmitContext, FunctionEmitContext } from "./env.js";
+import { lowerReturnStatement } from "./returnStmt.js";
 
 export const lowerMinimalFunction = (
 	fn: FunctionDecl,
-): { functionName: string; returnValue: number } => {
+	ctx: EmitContext,
+): { functionName: string; bodyLines: string[] } => {
 	if (fn.returnType.kind !== "IntType") {
 		throw new Error("only int return type is supported");
 	}
@@ -11,8 +13,11 @@ export const lowerMinimalFunction = (
 	if (!returnStmt || returnStmt.kind !== "ReturnStmt") {
 		throw new Error("expected return statement");
 	}
+	let tempCounter = 0;
+	const nextTemp = () => `%t${tempCounter++}`;
+	const fnCtx: FunctionEmitContext = { ...ctx, nextTemp };
 	return {
 		functionName: fn.name.text,
-		returnValue: lowerReturnValue(returnStmt),
+		bodyLines: lowerReturnStatement(returnStmt, fnCtx),
 	};
 };

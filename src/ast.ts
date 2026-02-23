@@ -23,7 +23,14 @@ export type ReturnStmt = {
 	value: Expr;
 };
 
-export type Expr = IntLiteral | Identifier;
+export type Expr = IntLiteral | Identifier | BinaryExpr;
+
+export type BinaryExpr = {
+	kind: "BinaryExpr";
+	op: "+";
+	left: Expr;
+	right: Expr;
+};
 
 export type IntLiteral = {
 	kind: "IntLiteral";
@@ -45,6 +52,7 @@ export type AstNode =
 	| FunctionDecl
 	| Block
 	| ReturnStmt
+	| BinaryExpr
 	| IntLiteral
 	| Identifier
 	| IntType;

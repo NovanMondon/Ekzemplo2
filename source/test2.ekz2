@@ -1,0 +1,2 @@
+int main() { return 40+2; }
+int foo() { return (1+2)+3; }

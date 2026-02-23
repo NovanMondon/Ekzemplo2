@@ -1,24 +1,39 @@
 import type { Program } from "../ast.js";
+import type { EmitContext } from "./env.js";
 import { lowerMinimalFunction } from "./function.js";
 
-export const emitLlvmIR = (program: Program, sourceFilename = "input.ekz2"): string => {
-	const fn = program.functions[0];
-	if (!fn) {
+export const emitLlvmIR = (program: Program, ctx: EmitContext): string => {
+	if (program.functions.length === 0) {
 		throw new Error("no function definitions");
 	}
-	const { functionName, returnValue } = lowerMinimalFunction(fn);
 
-	// Minimal LLVM IR for: `int <name>() { return <int>; }`
-	// We keep it intentionally small; clang can compile .ll directly.
+	const seen = new Set<string>();
+	const functionBlocks: string[] = [];
+	for (const fn of program.functions) {
+		const { functionName, bodyLines } = lowerMinimalFunction(fn, ctx);
+		if (seen.has(functionName)) {
+			throw new Error(`duplicate function name: ${functionName}`);
+		}
+		seen.add(functionName);
+
+		// Minimal LLVM IR for: `int <name>() { return <int>; }`
+		// We keep it intentionally small; clang can compile .ll directly.
+		functionBlocks.push(
+			[
+				`define i32 @${escapeLlvmIdentifier(functionName)}() {`,
+				"entry:",
+				...bodyLines,
+				"}",
+				"",
+			].join("\n"),
+		);
+	}
+
 	return [
 		`; ModuleID = 'Ekzemplo2'`,
-		`source_filename = "${escapeLlvmString(sourceFilename)}"`,
+		`source_filename = "${escapeLlvmString(ctx.sourceFilename)}"`,
 		"",
-		`define i32 @${escapeLlvmIdentifier(functionName)}() {`,
-		"entry:",
-		`  ret i32 ${returnValue}`,
-		"}",
-		"",
+		...functionBlocks,
 	].join("\n");
 };
 

@@ -1,10 +1,13 @@
 import * as antlr from "antlr4ng";
 
-import type { Block, FunctionDecl, IntLiteral, Program, ReturnStmt } from "./ast.js";
+import type { Block, Expr, FunctionDecl, IntLiteral, Program, ReturnStmt } from "./ast.js";
 import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
 import type {
+	AdditiveExprContext,
 	BlockContext,
+	ExprContext,
 	FunctionDefinitionContext,
+	PrimaryExprContext,
 	ProgramContext,
 	ReturnStatementContext,
 } from "./generated/Ekzemplo2Parser.js";
@@ -33,13 +36,20 @@ export const buildAst = (tree: ProgramContext): Program => {
 	return result;
 };
 
-class AstBuilder extends Ekzemplo2ParserVisitor<Program | FunctionDecl | Block | ReturnStmt> {
+type AstResult = Program | FunctionDecl | Block | ReturnStmt | Expr;
+
+class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	public override visitProgram = (ctx: ProgramContext): Program => {
-		const fn = ctx.functionDefinition().accept(this);
-		if (!fn || fn.kind !== "FunctionDecl") {
-			throw new Error("internal error: expected FunctionDecl");
+		const fnsCtx = ctx.functionDefinition();
+		const functions: FunctionDecl[] = [];
+		for (const fnCtx of fnsCtx) {
+			const fn = fnCtx.accept(this);
+			if (!fn || fn.kind !== "FunctionDecl") {
+				throw new Error("internal error: expected FunctionDecl");
+			}
+			functions.push(fn);
 		}
-		return { kind: "Program", functions: [fn] };
+		return { kind: "Program", functions };
 	};
 
 	public override visitFunctionDefinition = (ctx: FunctionDefinitionContext): FunctionDecl => {
@@ -66,30 +76,86 @@ class AstBuilder extends Ekzemplo2ParserVisitor<Program | FunctionDecl | Block |
 	};
 
 	public override visitReturnStatement = (ctx: ReturnStatementContext): ReturnStmt => {
-		const intText = ctx.INT().getText();
-		const intLit: IntLiteral = parseIntLiteral(intText);
-		return { kind: "ReturnStmt", value: intLit };
+		const value = ctx.expr().accept(this);
+		if (!value || !isExpr(value)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return { kind: "ReturnStmt", value };
 	};
 
-	protected override defaultResult(): (Program | FunctionDecl | Block | ReturnStmt) | null {
+	public override visitExpr = (ctx: ExprContext): Expr => {
+		const result = ctx.additiveExpr().accept(this);
+		if (!result || !isExpr(result)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return result;
+	};
+
+	public override visitAdditiveExpr = (ctx: AdditiveExprContext): Expr => {
+		const primaries = ctx.primaryExpr();
+		if (primaries.length === 0) {
+			throw new Error("internal error: expected at least one primaryExpr");
+		}
+
+		let acc = primaries[0]!.accept(this);
+		if (!acc || !isExpr(acc)) {
+			throw new Error("internal error: expected Expr");
+		}
+
+		for (let i = 1; i < primaries.length; i++) {
+			const right = primaries[i]!.accept(this);
+			if (!right || !isExpr(right)) {
+				throw new Error("internal error: expected Expr");
+			}
+			acc = { kind: "BinaryExpr", op: "+", left: acc, right };
+		}
+
+		return acc;
+	};
+
+	public override visitPrimaryExpr = (ctx: PrimaryExprContext): Expr => {
+		const intToken = ctx.INT();
+		if (intToken) {
+			return parseIntLiteral(intToken.getText());
+		}
+		const identToken = ctx.IDENT();
+		if (identToken) {
+			return { kind: "Identifier", text: identToken.getText() };
+		}
+		const inner = ctx.expr();
+		if (inner) {
+			const result = inner.accept(this);
+			if (!result || !isExpr(result)) {
+				throw new Error("internal error: expected Expr");
+			}
+			return result;
+		}
+		throw new Error("internal error: invalid primaryExpr");
+	};
+
+	protected override defaultResult(): AstResult | null {
 		return null;
 	}
 
 	protected override aggregateResult(
-		aggregate: (Program | FunctionDecl | Block | ReturnStmt) | null,
-		nextResult: (Program | FunctionDecl | Block | ReturnStmt) | null,
-	): (Program | FunctionDecl | Block | ReturnStmt) | null {
+		aggregate: AstResult | null,
+		nextResult: AstResult | null,
+	): AstResult | null {
 		return nextResult ?? aggregate;
 	}
 
 	protected override shouldVisitNextChild(
 		_node: antlr.ParseTree,
-		_currentResult: (Program | FunctionDecl | Block | ReturnStmt) | null,
+		_currentResult: AstResult | null,
 	): boolean {
 		// We build nodes in explicit visitX methods.
 		return false;
 	}
 }
+
+const isExpr = (node: AstResult): node is Expr => {
+	return node.kind === "IntLiteral" || node.kind === "Identifier" || node.kind === "BinaryExpr";
+};
 
 const parseIntLiteral = (text: string): IntLiteral => {
 	const value = Number.parseInt(text, 10);
