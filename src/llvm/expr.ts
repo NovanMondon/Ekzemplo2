@@ -2,14 +2,14 @@ import type { Expr } from "../ast.js";
 import type { FunctionEmitContext } from "./env.js";
 
 export type LoweredExpr = {
-	lines: string[];
+	code: string;
 	value: string;
 };
 
 export const lowerExprToLlvm = (expr: Expr, ctx: FunctionEmitContext): LoweredExpr => {
 	switch (expr.kind) {
 		case "IntLiteral":
-			return { lines: [], value: String(expr.value) };
+			return { code: "", value: String(expr.value) };
 		case "BinaryExpr": {
 			if (expr.op !== "+") {
 				throw new Error(`unsupported binary op: ${expr.op}`);
@@ -18,7 +18,7 @@ export const lowerExprToLlvm = (expr: Expr, ctx: FunctionEmitContext): LoweredEx
 			const right = lowerExprToLlvm(expr.right, ctx);
 			const tmp = ctx.nextTemp();
 			return {
-				lines: [...left.lines, ...right.lines, `  ${tmp} = add i32 ${left.value}, ${right.value}`],
+				code: left.code + right.code + `  ${tmp} = add i32 ${left.value}, ${right.value}\n`,
 				value: tmp,
 			};
 		}
