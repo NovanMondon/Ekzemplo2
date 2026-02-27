@@ -26,6 +26,10 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends nodejs \
 	&& rm -rf /var/lib/apt/lists/*
 
+# Install uv (includes uvx) for running Serena MCP server.
+# https://docs.astral.sh/uv/getting-started/installation/
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="/usr/local/bin" sh
+
 # Non-root user to match devcontainer.json (remoteUser: node)
 RUN groupadd --gid 1000 node \
 	&& useradd --uid 1000 --gid 1000 -m -s /bin/bash node \

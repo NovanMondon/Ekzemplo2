@@ -1,0 +1,13 @@
+project_name: "Ekzemplo2"
+
+# Prefer TypeScript for semantic tooling in this repo.
+language: "typescript"
+
+encoding: "utf-8"
+ignore_all_files_in_gitignore: true
+ignored_paths: []
+
+# If you only want analysis, set this to true.
+read_only: false
+
+excluded_tools: []
