@@ -13,6 +13,17 @@
         "--project",
         "${workspaceFolder}"
       ]
+    },
+    "any-script": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "any-script-mcp"
+      ],
+      "env": {
+        "ANY_SCRIPT_MCP_CONFIG": "${workspaceFolder}/.vscode/any-script-mcp.yaml"
+      }
     }
   },
   "inputs": []
