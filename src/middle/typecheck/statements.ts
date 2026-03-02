@@ -93,7 +93,11 @@ export const typecheckStatements = (
 	return exit;
 };
 
-const typecheckForStatement = (stmt: ForStmt, returnType: TypeNode, ctx: TypecheckContext): void => {
+const typecheckForStatement = (
+	stmt: ForStmt,
+	returnType: TypeNode,
+	ctx: TypecheckContext,
+): void => {
 	ctx.scopes.push(new Map());
 
 	if (stmt.init) {
@@ -174,7 +178,10 @@ const typecheckAssign = (stmt: AssignStmt, ctx: TypecheckContext): void => {
 			throw semanticError(`undefined variable: ${stmt.target.text}`, stmt.target);
 		}
 		if (targetType.kind === "ArrayType") {
-			throw semanticError(`array whole assignment is not supported: ${stmt.target.text}`, stmt.target);
+			throw semanticError(
+				`array whole assignment is not supported: ${stmt.target.text}`,
+				stmt.target,
+			);
 		}
 		const valueType = typecheckExpr(stmt.value, ctx);
 		if (!isSameType(valueType, targetType)) {

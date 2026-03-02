@@ -1,13 +1,7 @@
 import type { BinaryExpr } from "../../../frontend/ast.js";
 import { semanticError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
-import {
-	boolType,
-	intType,
-	llvmTypeFor,
-	type LowerExprFn,
-	type LoweredExpr,
-} from "./shared.js";
+import { boolType, intType, llvmTypeFor, type LowerExprFn, type LoweredExpr } from "./shared.js";
 
 export const lowerBinaryExpr = (
 	expr: BinaryExpr,

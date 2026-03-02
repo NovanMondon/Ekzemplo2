@@ -27,7 +27,10 @@ export const typecheckExpr = (expr: Expr, ctx: TypecheckContext): TypeNode => {
 		case "IndexExpr": {
 			const variableType = resolveVariable(ctx, expr.array.text);
 			if (!variableType) {
-				throw semanticError(`undefined variable: ${expr.array.text} (in ${ctx.sourceFilename})`, expr.array);
+				throw semanticError(
+					`undefined variable: ${expr.array.text} (in ${ctx.sourceFilename})`,
+					expr.array,
+				);
 			}
 			if (variableType.kind !== "ArrayType" && variableType.kind !== "StringType") {
 				throw semanticError(`index access requires array variable: ${expr.array.text}`, expr);
