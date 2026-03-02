@@ -9,6 +9,9 @@ KW_INT: 'int';
 KW_RETURN: 'return';
 
 PLUS: '+';
+MINUS: '-';
+STAR: '*';
+SLASH: '/';
 
 LPAREN: '(';
 RPAREN: ')';

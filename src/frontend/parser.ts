@@ -8,6 +8,7 @@ import type {
 	BlockContext,
 	ExprContext,
 	FunctionDefinitionContext,
+	MultiplicativeExprContext,
 	PrimaryExprContext,
 	ProgramContext,
 	ReturnStatementContext,
@@ -124,25 +125,13 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	};
 
 	public override visitAdditiveExpr = (ctx: AdditiveExprContext): Expr => {
+		const terms = ctx.multiplicativeExpr();
+		return foldBinaryExprs(terms, this, ["+", "-"]);
+	};
+
+	public override visitMultiplicativeExpr = (ctx: MultiplicativeExprContext): Expr => {
 		const primaries = ctx.primaryExpr();
-		if (primaries.length === 0) {
-			throw new Error("internal error: expected at least one primaryExpr");
-		}
-
-		let acc = primaries[0]!.accept(this);
-		if (!acc || !isExpr(acc)) {
-			throw new Error("internal error: expected Expr");
-		}
-
-		for (let i = 1; i < primaries.length; i++) {
-			const right = primaries[i]!.accept(this);
-			if (!right || !isExpr(right)) {
-				throw new Error("internal error: expected Expr");
-			}
-			acc = { kind: "BinaryExpr", op: "+", left: acc, right };
-		}
-
-		return acc;
+		return foldBinaryExprs(primaries, this, ["*", "/"]);
 	};
 
 	public override visitPrimaryExpr = (ctx: PrimaryExprContext): Expr => {
@@ -195,6 +184,53 @@ const parseIntLiteral = (text: string): IntLiteral => {
 		throw new SyntaxError(`invalid int literal: ${text}`);
 	}
 	return { kind: "IntLiteral", value, raw: text };
+};
+
+const foldBinaryExprs = (
+	parts: antlr.ParserRuleContext[],
+	visitor: AstBuilder,
+	validOps: Array<"+" | "-" | "*" | "/">,
+): Expr => {
+	if (parts.length === 0) {
+		throw new Error("internal error: expected at least one expression part");
+	}
+	let acc = parts[0]!.accept(visitor);
+	if (!acc || !isExpr(acc)) {
+		throw new Error("internal error: expected Expr");
+	}
+
+	const ops = collectOps(parts[0]!, validOps);
+	if (ops.length !== parts.length - 1) {
+		throw new Error("internal error: operator/operand count mismatch");
+	}
+
+	for (let i = 1; i < parts.length; i++) {
+		const right = parts[i]!.accept(visitor);
+		if (!right || !isExpr(right)) {
+			throw new Error("internal error: expected Expr");
+		}
+		acc = { kind: "BinaryExpr", op: ops[i - 1]!, left: acc, right };
+	}
+
+	return acc;
+};
+
+const collectOps = (
+	firstPart: antlr.ParserRuleContext,
+	validOps: Array<"+" | "-" | "*" | "/">,
+): Array<"+" | "-" | "*" | "/"> => {
+	const parent = firstPart.parent;
+	if (!parent || !parent.children) {
+		return [];
+	}
+	const ops: Array<"+" | "-" | "*" | "/"> = [];
+	for (const child of parent.children) {
+		const text = child.getText?.();
+		if (text && validOps.includes(text as "+" | "-" | "*" | "/")) {
+			ops.push(text as "+" | "-" | "*" | "/");
+		}
+	}
+	return ops;
 };
 
 export const debugRuleNames = () => Ekzemplo2Parser.ruleNames;

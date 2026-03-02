@@ -25,7 +25,11 @@ expr
   ;
 
 additiveExpr
-  : primaryExpr (PLUS primaryExpr)*
+  : multiplicativeExpr ((PLUS | MINUS) multiplicativeExpr)*
+  ;
+
+multiplicativeExpr
+  : primaryExpr ((STAR | SLASH) primaryExpr)*
   ;
 
 primaryExpr

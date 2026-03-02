@@ -27,7 +27,7 @@ export type Expr = IntLiteral | Identifier | BinaryExpr;
 
 export type BinaryExpr = {
 	kind: "BinaryExpr";
-	op: "+";
+	op: "+" | "-" | "*" | "/";
 	left: Expr;
 	right: Expr;
 };

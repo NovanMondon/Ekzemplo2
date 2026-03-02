@@ -23,6 +23,7 @@
 		"**/*": false,
 		"**/src/**/*": true,
 		"**/src/**/generated/**/*": false,
-		"**/grammer/**/*": true
+		"**/grammer/**/*": true,
+		"**/fixtures/**/*": true
 	}
 }

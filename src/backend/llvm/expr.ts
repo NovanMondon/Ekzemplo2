@@ -11,14 +11,25 @@ export const lowerExprToLlvm = (expr: Expr, ctx: FunctionEmitContext): LoweredEx
 		case "IntLiteral":
 			return { code: "", value: String(expr.value) };
 		case "BinaryExpr": {
-			if (expr.op !== "+") {
-				throw new Error(`unsupported binary op: ${expr.op}`);
-			}
 			const left = lowerExprToLlvm(expr.left, ctx);
 			const right = lowerExprToLlvm(expr.right, ctx);
 			const tmp = ctx.nextTemp();
+			const op = expr.op;
+			const instr =
+				op === "+"
+					? "add"
+					: op === "-"
+						? "sub"
+						: op === "*"
+							? "mul"
+							: op === "/"
+								? "sdiv"
+								: null;
+			if (!instr) {
+				throw new Error(`unsupported binary op: ${expr.op}`);
+			}
 			return {
-				code: left.code + right.code + `  ${tmp} = add i32 ${left.value}, ${right.value}\n`,
+				code: left.code + right.code + `  ${tmp} = ${instr} i32 ${left.value}, ${right.value}\n`,
 				value: tmp,
 			};
 		}
