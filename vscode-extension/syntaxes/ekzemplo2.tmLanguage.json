@@ -1,0 +1,81 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Ekzemplo2",
+	"scopeName": "source.ekzemplo2",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#chars"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#operators"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.ekzemplo2",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.ekzemplo2",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.ekzemplo2",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.ekzemplo2",
+					"match": "\\\\."
+				}
+			]
+		},
+		"chars": {
+			"name": "string.quoted.single.ekzemplo2",
+			"begin": "'",
+			"end": "'",
+			"patterns": [
+				{
+					"name": "constant.character.escape.ekzemplo2",
+					"match": "\\\\."
+				}
+			]
+		},
+		"keywords": {
+			"name": "keyword.control.ekzemplo2",
+			"match": "\\b(if|else|for|while|break|continue|return|extern|true|false)\\b"
+		},
+		"types": {
+			"name": "storage.type.ekzemplo2",
+			"match": "\\b(int|bool|string|char)\\b"
+		},
+		"numbers": {
+			"name": "constant.numeric.integer.ekzemplo2",
+			"match": "\\b\\d+\\b"
+		},
+		"operators": {
+			"name": "keyword.operator.ekzemplo2",
+			"match": "==|!=|<=|>=|[+\\-*/=<>]"
+		}
+	}
+}

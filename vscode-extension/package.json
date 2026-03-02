@@ -1,0 +1,44 @@
+{
+	"name": "ekzemplo2-vscode",
+	"displayName": "Ekzemplo2",
+	"description": "VS Code support for Ekzemplo2 (.ekz2)",
+	"version": "0.0.1",
+	"private": true,
+	"publisher": "local",
+	"engines": {
+		"vscode": "^1.95.0"
+	},
+	"categories": ["Programming Languages"],
+	"activationEvents": ["onLanguage:ekzemplo2"],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"languages": [
+			{
+				"id": "ekzemplo2",
+				"aliases": ["Ekzemplo2", "ekzemplo2"],
+				"extensions": [".ekz2"],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "ekzemplo2",
+				"scopeName": "source.ekzemplo2",
+				"path": "./syntaxes/ekzemplo2.tmLanguage.json"
+			}
+		]
+	},
+	"scripts": {
+		"build": "tsc -p .",
+		"watch": "tsc -p . -w",
+		"typecheck": "tsc -p . --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^24.3.0",
+		"@types/vscode": "^1.95.0",
+		"typescript": "^5.9.3",
+		"vscode-languageclient": "^9.0.1",
+		"vscode-languageserver": "^9.0.1",
+		"vscode-languageserver-textdocument": "^1.0.12"
+	}
+}
