@@ -16,15 +16,7 @@ export const lowerExprToLlvm = (expr: Expr, ctx: FunctionEmitContext): LoweredEx
 			const tmp = ctx.nextTemp();
 			const op = expr.op;
 			const instr =
-				op === "+"
-					? "add"
-					: op === "-"
-						? "sub"
-						: op === "*"
-							? "mul"
-							: op === "/"
-								? "sdiv"
-								: null;
+				op === "+" ? "add" : op === "-" ? "sub" : op === "*" ? "mul" : op === "/" ? "sdiv" : null;
 			if (!instr) {
 				throw new Error(`unsupported binary op: ${expr.op}`);
 			}
