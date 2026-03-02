@@ -3,6 +3,7 @@ import { semanticError } from "../../diagnostics/compileDiagnostic.js";
 import { currentScope } from "./scope.js";
 import { typecheckStatements } from "./statements.js";
 import type { FunctionSignature, TypecheckContext } from "./types.js";
+import { ensureSemanticSupportedType } from "./typeUtils.js";
 
 export const typecheckProgram = (program: Program, sourceFilename = "<input>"): void => {
 	if (program.functions.length === 0) {
@@ -14,6 +15,20 @@ export const typecheckProgram = (program: Program, sourceFilename = "<input>"): 
 		if (functions.has(externFn.name.text)) {
 			throw semanticError(`duplicate function name: ${externFn.name.text}`, externFn);
 		}
+		if (externFn.returnType.kind === "ArrayType") {
+			throw semanticError(`array return type is not supported: ${externFn.name.text}`, externFn);
+		}
+		ensureSemanticSupportedType(
+			externFn.returnType,
+			externFn,
+			`extern return of ${externFn.name.text}`,
+		);
+		for (const param of externFn.params) {
+			if (param.type.kind === "ArrayType") {
+				throw semanticError(`array parameter is not supported: ${param.name.text}`, param);
+			}
+			ensureSemanticSupportedType(param.type, param, `extern param ${param.name.text}`);
+		}
 		functions.set(externFn.name.text, {
 			returnType: externFn.returnType,
 			params: externFn.params.map((p) => p.type),
@@ -23,6 +38,10 @@ export const typecheckProgram = (program: Program, sourceFilename = "<input>"): 
 	for (const fn of program.functions) {
 		if (functions.has(fn.name.text)) {
 			throw semanticError(`duplicate function name: ${fn.name.text}`, fn);
+		}
+		ensureSemanticSupportedType(fn.returnType, fn, `return of ${fn.name.text}`);
+		for (const param of fn.params) {
+			ensureSemanticSupportedType(param.type, param, `param ${param.name.text}`);
 		}
 		functions.set(fn.name.text, {
 			returnType: fn.returnType,
@@ -45,12 +64,14 @@ const typecheckFunction = (fn: FunctionDecl, ctx: TypecheckContext): void => {
 	if (fn.returnType.kind === "ArrayType") {
 		throw semanticError(`array return type is not supported: ${fn.name.text}`, fn);
 	}
+	ensureSemanticSupportedType(fn.returnType, fn, `return of ${fn.name.text}`);
 
 	const scope = currentScope(ctx);
 	for (const param of fn.params) {
 		if (param.type.kind === "ArrayType") {
 			throw semanticError(`array parameter is not supported: ${param.name.text}`, param);
 		}
+		ensureSemanticSupportedType(param.type, param, `param ${param.name.text}`);
 		if (scope.has(param.name.text)) {
 			throw semanticError(`duplicate parameter name: ${param.name.text}`, param);
 		}

@@ -3,7 +3,7 @@ import { semanticError, typeError } from "../../diagnostics/compileDiagnostic.js
 import { typecheckExpr } from "./expr.js";
 import { currentScope, resolveVariable } from "./scope.js";
 import type { ExitKind, TypecheckContext } from "./types.js";
-import { isSameType, typeToString } from "./typeUtils.js";
+import { ensureSemanticSupportedType, isSameType, typeToString } from "./typeUtils.js";
 
 export const typecheckStatements = (
 	statements: Statement[],
@@ -156,6 +156,7 @@ const typecheckVarDecl = (
 	if (scope.has(name)) {
 		throw semanticError(`duplicate variable declaration: ${name}`, stmt);
 	}
+	ensureSemanticSupportedType(stmt.type, stmt, `variable ${name}`);
 	if (stmt.type.kind === "ArrayType" && stmt.initializer) {
 		throw semanticError("array initializer is not supported yet", stmt.initializer);
 	}

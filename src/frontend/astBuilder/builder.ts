@@ -3,9 +3,7 @@ import * as antlr from "antlr4ng";
 import type {
 	AssignStmt,
 	Block,
-	BoolType,
 	BreakStmt,
-	CharType,
 	ContinueStmt,
 	Expr,
 	ExprStmt,
@@ -14,20 +12,16 @@ import type {
 	FunctionDecl,
 	Identifier,
 	IfStmt,
-	IntType,
 	ParamDecl,
 	Program,
 	ReturnStmt,
 	Statement,
-	StringType,
 	TypeNode,
 	VarDeclStmt,
 	WhileStmt,
 } from "../ast.js";
-import { CompileDiagnosticError } from "../../diagnostics/compileDiagnostic.js";
 import type {
 	AdditiveExprContext,
-	ArgumentListContext,
 	AssignmentStatementContext,
 	AssignTargetContext,
 	BlockContext,
@@ -57,14 +51,11 @@ import type {
 	WhileStatementContext,
 } from "../generated/Ekzemplo2Parser.js";
 import { Ekzemplo2ParserVisitor } from "../generated/Ekzemplo2ParserVisitor.js";
+import { buildPrimaryExpr, buildAssignTarget } from "./exprBuilders.js";
 import { foldBinaryExprs } from "./fold.js";
-import { contextLocation, tokenLocation, withLoc } from "./location.js";
-import {
-	parseBoolLiteral,
-	parseCharLiteral,
-	parseIntLiteral,
-	parseStringLiteral,
-} from "./literals.js";
+import { buildForInit, buildForUpdate } from "./forBuilders.js";
+import { withLoc } from "./location.js";
+import { buildTypeName } from "./typeNameBuilder.js";
 import { type AstResult, expectExprResult, isStatement, isTypeNode } from "./types.js";
 
 export class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
@@ -165,9 +156,6 @@ export class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		ctx: ExternFunctionDeclarationContext,
 	): ExternFunctionDecl => {
 		const returnType = this.expectType(ctx.typeName().accept(this));
-		if (returnType.kind === "ArrayType") {
-			throw new Error("array return type is not supported yet");
-		}
 
 		const params: ParamDecl[] = [];
 		const externParameterSpec = ctx.externParameterSpec();
@@ -201,9 +189,6 @@ export class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 
 	public override visitFunctionDefinition = (ctx: FunctionDefinitionContext): FunctionDecl => {
 		const returnType = this.expectType(ctx.typeName().accept(this));
-		if (returnType.kind === "ArrayType") {
-			throw new Error("array return type is not supported yet");
-		}
 		const params: ParamDecl[] = [];
 		const parameterList = ctx.parameterList();
 		if (parameterList) {
@@ -227,9 +212,6 @@ export class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 
 	public override visitParameter = (ctx: ParameterContext): ParamDecl => {
 		const type = this.expectType(ctx.typeName().accept(this));
-		if (type.kind === "ArrayType") {
-			throw new Error("array parameter is not supported yet");
-		}
 		return withLoc(
 			{
 				kind: "ParamDecl",
@@ -395,79 +377,27 @@ export class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	};
 
 	private buildForInit(ctx: ForInitContext | null): ForStmt["init"] {
-		if (!ctx) {
-			return undefined;
-		}
-		const typeName = ctx.typeName();
-		if (typeName) {
-			const type = this.expectType(typeName.accept(this));
-			const nameToken = ctx.IDENT();
-			if (!nameToken) {
-				throw new Error("internal error: expected identifier");
-			}
-			const initExprCtx = ctx.expr();
-			if (initExprCtx) {
-				const initializer = this.expectExpr(initExprCtx.accept(this));
-				return this.makeVarDecl(type, nameToken, ctx, initializer);
-			}
-			return this.makeVarDecl(type, nameToken, ctx);
-		}
-
-		const targetCtx = ctx.assignTarget();
-		if (targetCtx && ctx.ASSIGN()) {
-			const value = ctx.expr();
-			if (!value) {
-				throw new Error("internal error: expected Expr");
-			}
-			const parsed = this.expectExpr(value.accept(this));
-			return withLoc(
-				{
-					kind: "AssignStmt",
-					target: this.buildAssignTarget(targetCtx),
-					value: parsed,
-				},
-				ctx,
-				this.sourceName,
-			);
-		}
-
-		const exprCtx = ctx.expr();
-		if (!exprCtx) {
-			throw new Error("internal error: expected Expr");
-		}
-		const value = this.expectExpr(exprCtx.accept(this));
-		return withLoc({ kind: "ExprStmt", value }, ctx, this.sourceName);
+		return buildForInit(ctx, {
+			sourceName: this.sourceName,
+			parseExpr: (exprCtx) => this.expectExpr(exprCtx.accept(this)),
+			parseType: (typeCtx) => this.expectType(typeCtx.accept(this)),
+			makeIdentifier: (token) => this.makeIdentifier(token),
+			makeVarDecl: (type, nameToken, parentCtx, initializer) =>
+				this.makeVarDecl(type, nameToken, parentCtx, initializer),
+			buildAssignTarget: (targetCtx) => this.buildAssignTarget(targetCtx),
+		});
 	}
 
 	private buildForUpdate(ctx: ForUpdateContext | null): ForStmt["update"] {
-		if (!ctx) {
-			return undefined;
-		}
-
-		const targetCtx = ctx.assignTarget();
-		if (targetCtx && ctx.ASSIGN()) {
-			const value = ctx.expr();
-			if (!value) {
-				throw new Error("internal error: expected Expr");
-			}
-			const parsed = this.expectExpr(value.accept(this));
-			return withLoc(
-				{
-					kind: "AssignStmt",
-					target: this.buildAssignTarget(targetCtx),
-					value: parsed,
-				},
-				ctx,
-				this.sourceName,
-			);
-		}
-
-		const exprCtx = ctx.expr();
-		if (!exprCtx) {
-			throw new Error("internal error: expected Expr");
-		}
-		const value = this.expectExpr(exprCtx.accept(this));
-		return withLoc({ kind: "ExprStmt", value }, ctx, this.sourceName);
+		return buildForUpdate(ctx, {
+			sourceName: this.sourceName,
+			parseExpr: (exprCtx) => this.expectExpr(exprCtx.accept(this)),
+			parseType: (typeCtx) => this.expectType(typeCtx.accept(this)),
+			makeIdentifier: (token) => this.makeIdentifier(token),
+			makeVarDecl: (type, nameToken, parentCtx, initializer) =>
+				this.makeVarDecl(type, nameToken, parentCtx, initializer),
+			buildAssignTarget: (targetCtx) => this.buildAssignTarget(targetCtx),
+		});
 	}
 
 	public override visitExpr = (ctx: ExprContext): Expr => {
@@ -513,144 +443,23 @@ export class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	};
 
 	public override visitPrimaryExpr = (ctx: PrimaryExprContext): Expr => {
-		const intToken = ctx.INT();
-		if (intToken) {
-			return parseIntLiteral(intToken, this.sourceName);
-		}
-		const stringToken = ctx.STRING_LITERAL();
-		if (stringToken) {
-			return parseStringLiteral(stringToken, this.sourceName);
-		}
-		const charToken = ctx.CHAR_LITERAL();
-		if (charToken) {
-			return parseCharLiteral(charToken, this.sourceName);
-		}
-		const trueToken = ctx.KW_TRUE();
-		if (trueToken) {
-			return parseBoolLiteral(trueToken, this.sourceName);
-		}
-		const falseToken = ctx.KW_FALSE();
-		if (falseToken) {
-			return parseBoolLiteral(falseToken, this.sourceName);
-		}
-		const identToken = ctx.IDENT();
-		if (identToken) {
-			if (ctx.LPAREN() && ctx.RPAREN()) {
-				const argumentList = ctx.argumentList();
-				return withLoc(
-					{
-						kind: "CallExpr",
-						callee: this.makeIdentifier(identToken),
-						args: argumentList ? this.buildArgumentList(argumentList) : [],
-					},
-					ctx,
-					this.sourceName,
-				);
-			}
-			if (ctx.LBRACK() && ctx.RBRACK()) {
-				const indexCtx = ctx.expr();
-				if (!indexCtx) {
-					throw new Error("internal error: expected index expression");
-				}
-				const index = this.expectExpr(indexCtx.accept(this));
-				return withLoc(
-					{
-						kind: "IndexExpr",
-						array: this.makeIdentifier(identToken),
-						index,
-					},
-					ctx,
-					this.sourceName,
-				);
-			}
-			return this.makeIdentifier(identToken);
-		}
-		const inner = ctx.expr();
-		if (inner) {
-			return this.expectExpr(inner.accept(this));
-		}
-		throw new Error("internal error: invalid primaryExpr");
+		return buildPrimaryExpr(ctx, {
+			sourceName: this.sourceName,
+			parseExpr: (exprCtx) => this.expectExpr(exprCtx.accept(this)),
+			makeIdentifier: (token) => this.makeIdentifier(token),
+		});
 	};
 
-	private buildArgumentList(argumentList: ArgumentListContext): Expr[] {
-		const args: Expr[] = [];
-		for (const argCtx of argumentList.expr()) {
-			args.push(this.expectExpr(argCtx.accept(this)));
-		}
-		return args;
-	}
-
 	public override visitTypeName = (ctx: TypeNameContext): TypeNode => {
-		const scalarType = this.buildScalarType(ctx);
-		const lengthToken = ctx.INT();
-		if (!lengthToken) {
-			return scalarType;
-		}
-		if (scalarType.kind === "StringType") {
-			throw new CompileDiagnosticError("syntax", "array element type string is not supported", {
-				location: contextLocation(ctx, this.sourceName),
-			});
-		}
-		const rawLength = lengthToken.getText();
-		const length = Number.parseInt(rawLength, 10);
-		if (!Number.isInteger(length) || length <= 0) {
-			throw new CompileDiagnosticError(
-				"syntax",
-				`array length must be a positive integer: ${rawLength}`,
-				{
-					location: tokenLocation(lengthToken.symbol, this.sourceName),
-					nearText: rawLength,
-				},
-			);
-		}
-		return withLoc(
-			{
-				kind: "ArrayType",
-				elementType: scalarType,
-				length,
-				rawLength,
-			},
-			ctx,
-			this.sourceName,
-		);
+		return buildTypeName(ctx, this.sourceName);
 	};
 
 	private buildAssignTarget(ctx: AssignTargetContext): AssignStmt["target"] {
-		const identToken = ctx.IDENT();
-		const indexCtx = ctx.expr();
-		if (!indexCtx) {
-			return this.makeIdentifier(identToken);
-		}
-		const index = this.expectExpr(indexCtx.accept(this));
-		return withLoc(
-			{
-				kind: "IndexExpr",
-				array: this.makeIdentifier(identToken),
-				index,
-			},
-			ctx,
-			this.sourceName,
-		);
-	}
-
-	private buildScalarType(ctx: TypeNameContext): IntType | BoolType | StringType | CharType {
-		const scalarTypeCtx = ctx.scalarType();
-		if (!scalarTypeCtx) {
-			throw new Error("internal error: expected scalarType");
-		}
-		if (scalarTypeCtx.KW_INT()) {
-			return withLoc({ kind: "IntType" }, scalarTypeCtx, this.sourceName);
-		}
-		if (scalarTypeCtx.KW_BOOL()) {
-			return withLoc({ kind: "BoolType" }, scalarTypeCtx, this.sourceName);
-		}
-		if (scalarTypeCtx.KW_STRING()) {
-			return withLoc({ kind: "StringType" }, scalarTypeCtx, this.sourceName);
-		}
-		if (scalarTypeCtx.KW_CHAR()) {
-			return withLoc({ kind: "CharType" }, scalarTypeCtx, this.sourceName);
-		}
-		throw new Error("internal error: invalid scalarType");
+		return buildAssignTarget(ctx, {
+			sourceName: this.sourceName,
+			parseExpr: (exprCtx) => this.expectExpr(exprCtx.accept(this)),
+			makeIdentifier: (token) => this.makeIdentifier(token),
+		});
 	}
 
 	protected override defaultResult(): AstResult | null {

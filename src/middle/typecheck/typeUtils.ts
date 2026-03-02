@@ -1,4 +1,5 @@
-import type { TypeNode } from "../../frontend/ast.js";
+import type { AstNode, TypeNode } from "../../frontend/ast.js";
+import { semanticError } from "../../diagnostics/compileDiagnostic.js";
 
 export const isSameType = (left: TypeNode, right: TypeNode): boolean => {
 	if (left.kind !== right.kind) {
@@ -28,6 +29,14 @@ export const typeToString = (type: TypeNode): string => {
 			? "int"
 			: type.elementType.kind === "BoolType"
 				? "bool"
-				: "char";
+				: type.elementType.kind === "CharType"
+					? "char"
+					: "string";
 	return `${elementType}[${type.rawLength}]`;
+};
+
+export const ensureSemanticSupportedType = (type: TypeNode, node: AstNode, where: string): void => {
+	if (type.kind === "ArrayType" && type.elementType.kind === "StringType") {
+		throw semanticError(`string[] is not supported yet (${where})`, node);
+	}
 };

@@ -185,7 +185,7 @@ export type CharType = {
 
 export type ArrayType = {
 	kind: "ArrayType";
-	elementType: IntType | BoolType | CharType;
+	elementType: IntType | BoolType | CharType | StringType;
 	length: number;
 	rawLength: string;
 } & Located;
