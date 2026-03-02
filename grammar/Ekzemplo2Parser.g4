@@ -9,7 +9,15 @@ program
   ;
 
 functionDefinition
-  : typeName IDENT LPAREN RPAREN block
+  : typeName IDENT LPAREN parameterList? RPAREN block
+  ;
+
+parameterList
+  : parameter (COMMA parameter)*
+  ;
+
+parameter
+  : typeName IDENT
   ;
 
 typeName
@@ -18,7 +26,27 @@ typeName
   ;
 
 block
-  : LBRACE returnStatement RBRACE
+  : LBRACE statement* RBRACE
+  ;
+
+statement
+  : variableDeclaration
+  | assignmentStatement
+  | returnStatement
+  | expressionStatement
+  | block
+  ;
+
+expressionStatement
+  : expr SEMI
+  ;
+
+variableDeclaration
+  : typeName IDENT (ASSIGN expr)? SEMI
+  ;
+
+assignmentStatement
+  : IDENT ASSIGN expr SEMI
   ;
 
 returnStatement
@@ -54,6 +82,11 @@ primaryExpr
   : INT
   | KW_TRUE
   | KW_FALSE
+  | IDENT LPAREN argumentList? RPAREN
   | IDENT
   | LPAREN expr RPAREN
+  ;
+
+argumentList
+  : expr (COMMA expr)*
   ;

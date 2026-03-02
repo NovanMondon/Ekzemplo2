@@ -1,30 +1,41 @@
 import * as antlr from "antlr4ng";
 
 import type {
+	AssignStmt,
 	Block,
 	BoolLiteral,
 	Expr,
+	ExprStmt,
 	FunctionDecl,
 	IntLiteral,
+	ParamDecl,
 	Program,
 	ReturnStmt,
+	Statement,
 	TypeNode,
+	VarDeclStmt,
 } from "./ast.js";
 import { Ekzemplo2Lexer } from "./generated/Ekzemplo2Lexer.js";
 import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
 import type {
 	AdditiveExprContext,
+	ArgumentListContext,
+	AssignmentStatementContext,
 	BlockContext,
 	CastExprContext,
 	EqualityExprContext,
+	ExpressionStatementContext,
 	ExprContext,
 	FunctionDefinitionContext,
 	MultiplicativeExprContext,
+	ParameterContext,
 	PrimaryExprContext,
 	ProgramContext,
 	RelationalExprContext,
 	ReturnStatementContext,
+	StatementContext,
 	TypeNameContext,
+	VariableDeclarationContext,
 } from "./generated/Ekzemplo2Parser.js";
 import { Ekzemplo2ParserVisitor } from "./generated/Ekzemplo2ParserVisitor.js";
 
@@ -82,7 +93,7 @@ export const buildAst = (tree: ProgramContext): Program => {
 	return result;
 };
 
-type AstResult = Program | FunctionDecl | Block | ReturnStmt | Expr | TypeNode;
+type AstResult = Program | FunctionDecl | ParamDecl | Block | Statement | Expr | TypeNode;
 
 class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	public override visitProgram = (ctx: ProgramContext): Program => {
@@ -104,6 +115,17 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!returnType || !isTypeNode(returnType)) {
 			throw new Error("internal error: expected type name");
 		}
+		const params: ParamDecl[] = [];
+		const parameterList = ctx.parameterList();
+		if (parameterList) {
+			for (const paramCtx of parameterList.parameter()) {
+				const param = paramCtx.accept(this);
+				if (!param || param.kind !== "ParamDecl") {
+					throw new Error("internal error: expected ParamDecl");
+				}
+				params.push(param);
+			}
+		}
 		const body = ctx.block().accept(this);
 		if (!body || body.kind !== "Block") {
 			throw new Error("internal error: expected Block");
@@ -112,17 +134,128 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			kind: "FunctionDecl",
 			name: { kind: "Identifier", text: nameText },
 			returnType,
-			params: [],
+			params,
 			body,
 		};
 	};
 
-	public override visitBlock = (ctx: BlockContext): Block => {
-		const stmt = ctx.returnStatement().accept(this);
-		if (!stmt || stmt.kind !== "ReturnStmt") {
-			throw new Error("internal error: expected ReturnStmt");
+	public override visitParameter = (ctx: ParameterContext): ParamDecl => {
+		const type = ctx.typeName().accept(this);
+		if (!type || !isTypeNode(type)) {
+			throw new Error("internal error: expected type name");
 		}
-		return { kind: "Block", statements: [stmt] };
+		return {
+			kind: "ParamDecl",
+			name: { kind: "Identifier", text: ctx.IDENT().getText() },
+			type,
+		};
+	};
+
+	public override visitBlock = (ctx: BlockContext): Block => {
+		const statements: Statement[] = [];
+		for (const stmtCtx of ctx.statement()) {
+			const stmt = stmtCtx.accept(this);
+			if (!stmt || !isStatement(stmt)) {
+				throw new Error("internal error: expected Statement");
+			}
+			statements.push(stmt);
+		}
+		return { kind: "Block", statements };
+	};
+
+	public override visitStatement = (ctx: StatementContext): Statement => {
+		const varDecl = ctx.variableDeclaration();
+		if (varDecl) {
+			const stmt = varDecl.accept(this);
+			if (!stmt || stmt.kind !== "VarDeclStmt") {
+				throw new Error("internal error: expected VarDeclStmt");
+			}
+			return stmt;
+		}
+
+		const assign = ctx.assignmentStatement();
+		if (assign) {
+			const stmt = assign.accept(this);
+			if (!stmt || stmt.kind !== "AssignStmt") {
+				throw new Error("internal error: expected AssignStmt");
+			}
+			return stmt;
+		}
+
+		const ret = ctx.returnStatement();
+		if (ret) {
+			const stmt = ret.accept(this);
+			if (!stmt || stmt.kind !== "ReturnStmt") {
+				throw new Error("internal error: expected ReturnStmt");
+			}
+			return stmt;
+		}
+
+		const exprStmt = ctx.expressionStatement();
+		if (exprStmt) {
+			const stmt = exprStmt.accept(this);
+			if (!stmt || stmt.kind !== "ExprStmt") {
+				throw new Error("internal error: expected ExprStmt");
+			}
+			return stmt;
+		}
+
+		const block = ctx.block();
+		if (block) {
+			const stmt = block.accept(this);
+			if (!stmt || stmt.kind !== "Block") {
+				throw new Error("internal error: expected Block");
+			}
+			return stmt;
+		}
+
+		throw new Error("internal error: invalid statement");
+	};
+
+	public override visitExpressionStatement = (ctx: ExpressionStatementContext): ExprStmt => {
+		const value = ctx.expr().accept(this);
+		if (!value || !isExpr(value)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return { kind: "ExprStmt", value };
+	};
+
+	public override visitVariableDeclaration = (ctx: VariableDeclarationContext): VarDeclStmt => {
+		const type = ctx.typeName().accept(this);
+		if (!type || !isTypeNode(type)) {
+			throw new Error("internal error: expected type name");
+		}
+		const ident = ctx.IDENT().getText();
+		const initializerCtx = ctx.expr();
+		if (initializerCtx) {
+			const initializer = initializerCtx.accept(this);
+			if (!initializer || !isExpr(initializer)) {
+				throw new Error("internal error: expected Expr");
+			}
+			return {
+				kind: "VarDeclStmt",
+				name: { kind: "Identifier", text: ident },
+				type,
+				initializer,
+			};
+		}
+		return {
+			kind: "VarDeclStmt",
+			name: { kind: "Identifier", text: ident },
+			type,
+		};
+	};
+
+	public override visitAssignmentStatement = (ctx: AssignmentStatementContext): AssignStmt => {
+		const value = ctx.expr().accept(this);
+		if (!value || !isExpr(value)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return {
+			kind: "AssignStmt",
+			target: { kind: "Identifier", text: ctx.IDENT().getText() },
+			value,
+		};
 	};
 
 	public override visitReturnStatement = (ctx: ReturnStatementContext): ReturnStmt => {
@@ -204,6 +337,14 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		}
 		const identToken = ctx.IDENT();
 		if (identToken) {
+			if (ctx.LPAREN() && ctx.RPAREN()) {
+				const argumentList = ctx.argumentList();
+				return {
+					kind: "CallExpr",
+					callee: { kind: "Identifier", text: identToken.getText() },
+					args: argumentList ? this.buildArgumentList(argumentList) : [],
+				};
+			}
 			return { kind: "Identifier", text: identToken.getText() };
 		}
 		const inner = ctx.expr();
@@ -216,6 +357,18 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		}
 		throw new Error("internal error: invalid primaryExpr");
 	};
+
+	private buildArgumentList(argumentList: ArgumentListContext): Expr[] {
+		const args: Expr[] = [];
+		for (const argCtx of argumentList.expr()) {
+			const arg = argCtx.accept(this);
+			if (!arg || !isExpr(arg)) {
+				throw new Error("internal error: expected Expr");
+			}
+			args.push(arg);
+		}
+		return args;
+	}
 
 	public override visitTypeName = (ctx: TypeNameContext): TypeNode => {
 		const intToken = ctx.KW_INT();
@@ -255,12 +408,23 @@ const isExpr = (node: AstResult): node is Expr => {
 		node.kind === "BoolLiteral" ||
 		node.kind === "Identifier" ||
 		node.kind === "BinaryExpr" ||
-		node.kind === "CastExpr"
+		node.kind === "CastExpr" ||
+		node.kind === "CallExpr"
 	);
 };
 
 const isTypeNode = (node: AstResult): node is TypeNode => {
 	return node.kind === "IntType" || node.kind === "BoolType";
+};
+
+const isStatement = (node: AstResult): node is Statement => {
+	return (
+		node.kind === "VarDeclStmt" ||
+		node.kind === "AssignStmt" ||
+		node.kind === "ExprStmt" ||
+		node.kind === "ReturnStmt" ||
+		node.kind === "Block"
+	);
 };
 
 const parseIntLiteral = (text: string): IntLiteral => {

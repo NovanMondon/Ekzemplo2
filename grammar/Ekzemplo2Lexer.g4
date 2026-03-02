@@ -18,6 +18,7 @@ SLASH: '/';
 
 EQ: '==';
 NEQ: '!=';
+ASSIGN: '=';
 LTE: '<=';
 GTE: '>=';
 LT: '<';
@@ -25,6 +26,7 @@ GT: '>';
 
 LPAREN: '(';
 RPAREN: ')';
+COMMA: ',';
 LBRACE: '{';
 RBRACE: '}';
 SEMI: ';';

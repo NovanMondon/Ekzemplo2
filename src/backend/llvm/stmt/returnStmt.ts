@@ -1,6 +1,6 @@
-import type { ReturnStmt, TypeNode } from "../../frontend/ast.js";
-import type { FunctionEmitContext } from "./env.js";
-import { lowerExprToLlvm, llvmTypeFor, typeToString } from "./expr.js";
+import type { ReturnStmt, TypeNode } from "../../../frontend/ast.js";
+import type { FunctionEmitContext } from "../env.js";
+import { lowerExprToLlvm, llvmTypeFor, typeToString } from "../expr.js";
 
 export const lowerReturnStatement = (
 	stmt: ReturnStmt,

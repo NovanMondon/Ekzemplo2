@@ -7,8 +7,14 @@ export type FunctionDecl = {
 	kind: "FunctionDecl";
 	name: Identifier;
 	returnType: TypeNode;
-	params: [];
+	params: ParamDecl[];
 	body: Block;
+};
+
+export type ParamDecl = {
+	kind: "ParamDecl";
+	name: Identifier;
+	type: TypeNode;
 };
 
 export type Block = {
@@ -16,14 +22,38 @@ export type Block = {
 	statements: Statement[];
 };
 
-export type Statement = ReturnStmt;
+export type Statement = VarDeclStmt | AssignStmt | ExprStmt | ReturnStmt | Block;
+
+export type VarDeclStmt = {
+	kind: "VarDeclStmt";
+	name: Identifier;
+	type: TypeNode;
+	initializer?: Expr;
+};
+
+export type AssignStmt = {
+	kind: "AssignStmt";
+	target: Identifier;
+	value: Expr;
+};
+
+export type ExprStmt = {
+	kind: "ExprStmt";
+	value: Expr;
+};
 
 export type ReturnStmt = {
 	kind: "ReturnStmt";
 	value: Expr;
 };
 
-export type Expr = IntLiteral | BoolLiteral | Identifier | BinaryExpr | CastExpr;
+export type Expr = IntLiteral | BoolLiteral | Identifier | BinaryExpr | CastExpr | CallExpr;
+
+export type CallExpr = {
+	kind: "CallExpr";
+	callee: Identifier;
+	args: Expr[];
+};
 
 export type BinaryExpr = {
 	kind: "BinaryExpr";
@@ -68,8 +98,13 @@ export type CastExpr = {
 export type AstNode =
 	| Program
 	| FunctionDecl
+	| ParamDecl
 	| Block
+	| VarDeclStmt
+	| AssignStmt
+	| ExprStmt
 	| ReturnStmt
+	| CallExpr
 	| BinaryExpr
 	| IntLiteral
 	| BoolLiteral

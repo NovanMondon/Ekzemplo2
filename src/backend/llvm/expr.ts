@@ -1,5 +1,7 @@
 import type { BoolType, Expr, IntType, TypeNode } from "../../frontend/ast.js";
 import type { FunctionEmitContext } from "./env.js";
+import { escapeLlvmIdentifier } from "./escape.js";
+import { resolveVariable } from "./scope.js";
 
 export type LoweredExpr = {
 	code: string;
@@ -98,10 +100,54 @@ export const lowerExprToLlvm = (expr: Expr, ctx: FunctionEmitContext): LoweredEx
 				type: boolType,
 			};
 		}
-		case "Identifier":
-			throw new Error(
-				`identifiers are not supported in expressions yet (in ${ctx.sourceFilename})`,
-			);
+		case "Identifier": {
+			const binding = resolveVariable(ctx, expr.text);
+			if (!binding) {
+				throw new Error(`undefined variable: ${expr.text} (in ${ctx.sourceFilename})`);
+			}
+			const tmp = ctx.nextTemp();
+			const llvmType = llvmTypeFor(binding.type);
+			return {
+				code: `  ${tmp} = load ${llvmType}, ${llvmType}* ${binding.pointer}\n`,
+				value: tmp,
+				type: binding.type,
+			};
+		}
+		case "CallExpr": {
+			const signature = ctx.functions.get(expr.callee.text);
+			if (!signature) {
+				throw new Error(`undefined function: ${expr.callee.text}`);
+			}
+			if (signature.params.length !== expr.args.length) {
+				throw new Error(
+					`argument count mismatch for ${expr.callee.text}: expected ${signature.params.length}, got ${expr.args.length}`,
+				);
+			}
+
+			let code = "";
+			const loweredArgs: string[] = [];
+			for (let i = 0; i < expr.args.length; i++) {
+				const lowered = lowerExprToLlvm(expr.args[i]!, ctx);
+				const expectedType = signature.params[i]!;
+				if (lowered.type.kind !== expectedType.kind) {
+					throw new Error(
+						`argument type mismatch for ${expr.callee.text} at ${i + 1}: expected ${typeToString(expectedType)}, got ${typeToString(lowered.type)}`,
+					);
+				}
+				code += lowered.code;
+				const llvmType = llvmTypeFor(expectedType);
+				loweredArgs.push(`${llvmType} ${lowered.value}`);
+			}
+
+			const tmp = ctx.nextTemp();
+			const returnLlvmType = llvmTypeFor(signature.returnType);
+			code += `  ${tmp} = call ${returnLlvmType} @${escapeLlvmIdentifier(expr.callee.text)}(${loweredArgs.join(", ")})\n`;
+			return {
+				code,
+				value: tmp,
+				type: signature.returnType,
+			};
+		}
 		default: {
 			const _exhaustive: never = expr;
 			return _exhaustive;
