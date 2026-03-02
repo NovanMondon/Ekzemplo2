@@ -10,6 +10,13 @@
 
 ## 開発者・AGENT向け
 
+### ディレクトリ構成
+
+- `src/frontend/`: 字句/構文解析と AST 構築（ANTLR 生成物を含む）
+- `src/middle/`: 中間層（型検査・名前解決・最適化などの予定地）
+- `src/backend/`: LLVM IR 生成などのバックエンド
+- `fixtures/`: 入力例（`.ekz2`）
+
 ### Lint / Format
 
 ```bash
@@ -56,11 +63,11 @@ printf '// hello\n' | npm run exec
 
 ```bash
 # LLVM IR を output/ に出力（例: output/test1.ll）
-npm run exec -- --emit-llvm source/test1.ekz2
+npm run exec -- --emit-llvm fixtures/test1.ekz2
 
 # LLVM IR を出して、そのまま clang でバイナリ生成（例: output/test1）
-npm run exec -- --compile source/test1.ekz2
+npm run exec -- --compile fixtures/test1.ekz2
 
 # 出力先ディレクトリや名前を指定
-npm run exec -- --compile --out-dir output --out-name a.out source/test1.ekz2
+npm run exec -- --compile --out-dir output --out-name a.out fixtures/test1.ekz2
 ```
