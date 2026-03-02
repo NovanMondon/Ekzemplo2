@@ -11,7 +11,10 @@ export const lowerIndexExpr = (
 ): LoweredExpr => {
 	const binding = resolveVariable(ctx, expr.array.text);
 	if (!binding) {
-		throw semanticError(`undefined variable: ${expr.array.text} (in ${ctx.sourceFilename})`, expr.array);
+		throw semanticError(
+			`undefined variable: ${expr.array.text} (in ${ctx.sourceFilename})`,
+			expr.array,
+		);
 	}
 	if (binding.type.kind !== "ArrayType" && binding.type.kind !== "StringType") {
 		throw semanticError(`index access requires array variable: ${expr.array.text}`, expr);

@@ -11,7 +11,10 @@ export const lowerAssignStatement = (stmt: AssignStmt, ctx: FunctionEmitContext)
 			throw semanticError(`undefined variable: ${stmt.target.text}`, stmt.target);
 		}
 		if (binding.type.kind === "ArrayType") {
-			throw semanticError(`array whole assignment is not supported: ${stmt.target.text}`, stmt.target);
+			throw semanticError(
+				`array whole assignment is not supported: ${stmt.target.text}`,
+				stmt.target,
+			);
 		}
 
 		const lowered = lowerExprToLlvm(stmt.value, ctx);
@@ -37,7 +40,10 @@ export const lowerAssignStatement = (stmt: AssignStmt, ctx: FunctionEmitContext)
 		);
 	}
 	if (binding.type.kind !== "ArrayType") {
-		throw semanticError(`index assignment requires array variable: ${stmt.target.array.text}`, stmt.target);
+		throw semanticError(
+			`index assignment requires array variable: ${stmt.target.array.text}`,
+			stmt.target,
+		);
 	}
 
 	const loweredIndex = lowerExprToLlvm(stmt.target.index, ctx);
