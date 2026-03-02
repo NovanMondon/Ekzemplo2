@@ -32,10 +32,10 @@
 
 ユーザーが「機能追加・変更」を明確に依頼している場合、ユーザーから明示がなくても、原則として次の流れで進める（ただし重い操作は別途確認する）。
 
-- 1) 差分確認: `git status --porcelain`（必要に応じて `git diff`）を行い、既存差分があれば切り分けを共有する。
-- 2) 実装: 依頼内容に必要な最小変更で実装する（依頼外の整備変更は混ぜない）。
-- 3) fixtures追加: 追加/変更した機能を最小の入力で再現する fixture（テストコード）を `fixtures/` に追加する。
-- 4) 動作チェック: 変更の性質に応じて、次のチェックを実行する。
+- 1. 差分確認: `git status --porcelain`（必要に応じて `git diff`）を行い、既存差分があれば切り分けを共有する。
+- 2. 実装: 依頼内容に必要な最小変更で実装する（依頼外の整備変更は混ぜない）。
+- 3. fixtures追加: 追加/変更した機能を最小の入力で再現する fixture（テストコード）を `fixtures/` に追加する。
+- 4. 動作チェック: 変更の性質に応じて、次のチェックを実行する。
   - `npm run typecheck` / `npm run test`
   - `npm run exec -- fixtures/<new>.ekz2`（パース確認）
   - 生成系が関係する場合: `npm run exec -- --emit-llvm fixtures/<new>.ekz2`、`npm run exec -- --compile fixtures/<new>.ekz2`

@@ -309,10 +309,7 @@ const foldBinaryExprs = (
 	return acc;
 };
 
-const collectOps = (
-	firstPart: antlr.ParserRuleContext,
-	validOps: BinaryOp[],
-): BinaryOp[] => {
+const collectOps = (firstPart: antlr.ParserRuleContext, validOps: BinaryOp[]): BinaryOp[] => {
 	const parent = firstPart.parent;
 	if (!parent || !parent.children) {
 		return [];
