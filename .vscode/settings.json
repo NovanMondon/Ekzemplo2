@@ -1,8 +1,28 @@
 {
-  "chat.useAgentsMdFile": true,
-  "editor.formatOnSave": true,
-  "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": "explicit"
-  },
-  "eslint.validate": ["javascript", "typescript"]
+	"chat.useAgentsMdFile": true,
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "explicit"
+	},
+	"eslint.validate": ["javascript", "typescript"],
+	"chat.tools.terminal.enableAutoApprove": true,
+	"chat.tools.terminal.autoApprove": {
+		"cd": true,
+		"ls": true,
+		"pwd": true,
+		"echo": true,
+		"cat": true,
+		"head": true,
+		"tail": true,
+		"grep": true,
+		"git status": true,
+		"git log": true,
+		"git diff": true
+	},
+	"chat.tools.edits.autoApprove": {
+		"**/*": false,
+		"**/src/**/*": true,
+		"**/src/**/generated/**/*": false,
+		"**/grammer/**/*": true
+	}
 }

@@ -1,4 +1,4 @@
-import type { ReturnStmt } from "../ast.js";
+import type { ReturnStmt } from "../../frontend/ast.js";
 import type { FunctionEmitContext } from "./env.js";
 import { lowerExprToLlvm } from "./expr.js";
 

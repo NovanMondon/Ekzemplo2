@@ -1,4 +1,4 @@
-import type { FunctionDecl } from "../ast.js";
+import type { FunctionDecl } from "../../frontend/ast.js";
 import type { EmitContext, FunctionEmitContext } from "./env.js";
 import { escapeLlvmIdentifier } from "./escape.js";
 import { lowerReturnStatement } from "./returnStmt.js";

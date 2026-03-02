@@ -1,4 +1,4 @@
-import type { Program } from "../ast.js";
+import type { Program } from "../../frontend/ast.js";
 import type { EmitContext } from "./env.js";
 import { lowerMinimalFunction } from "./function.js";
 import { escapeLlvmString } from "./escape.js";

@@ -27,7 +27,7 @@ npm run format
 
 - 文法ファイル: `grammar/`（`Ekzemplo2Lexer.g4`, `Ekzemplo2Parser.g4`）
 - 生成コマンド: `npm run gen`（Java 17+ が必要）
-- 生成物出力先: `src/generated/`（コミットしない想定で`.gitignore`済み）
+- 生成物出力先: `src/frontend/generated/`（コミットしない想定で`.gitignore`済み）
 
 ### パーサ実行（開発中）
 

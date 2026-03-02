@@ -1,4 +1,4 @@
-import type { Expr } from "../ast.js";
+import type { Expr } from "../../frontend/ast.js";
 import type { FunctionEmitContext } from "./env.js";
 
 export type LoweredExpr = {

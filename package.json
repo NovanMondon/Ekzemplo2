@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "exec": "tsx src/index.ts",
-    "gen": "antlr4ng -Dlanguage=TypeScript -o src/generated -visitor -no-listener -Xexact-output-dir grammar/Ekzemplo2Lexer.g4 grammar/Ekzemplo2Parser.g4",
+    "gen": "antlr4ng -Dlanguage=TypeScript -o src/frontend/generated -visitor -no-listener -Xexact-output-dir grammar/Ekzemplo2Lexer.g4 grammar/Ekzemplo2Parser.g4",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",
