@@ -65,7 +65,10 @@ const lowerSingleStatement = (
 	return lowerStatements([statement], returnType, ctx);
 };
 
-const mergeBranchExit = (thenExit: LoweredStatements["exit"], elseExit: LoweredStatements["exit"]) => {
+const mergeBranchExit = (
+	thenExit: LoweredStatements["exit"],
+	elseExit: LoweredStatements["exit"],
+) => {
 	if (thenExit === "none" || elseExit === "none") {
 		return "none" as const;
 	}
