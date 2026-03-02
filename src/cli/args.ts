@@ -1,3 +1,5 @@
+import { cac } from "cac";
+
 export type CliOptions = {
 	dumpAst: boolean;
 	emitLlvm: boolean;
@@ -12,50 +14,39 @@ export type CliArgs = {
 };
 
 export const parseArgs = (argv: string[]): CliArgs => {
-	let dumpAst = false;
-	let emitLlvm = false;
-	let compile = false;
-	let outDir = "output";
-	let outName: string | undefined;
-	let filePath: string | undefined;
+	const cli = cac("ekzemplo2");
+	cli.option("--dump-ast", "Dump AST as JSON");
+	cli.option("--emit-llvm", "Emit LLVM IR (.ll)");
+	cli.option("--compile", "Emit LLVM IR and compile with clang");
+	cli.option("--out-dir <dir>", "Output directory", { default: "output" });
+	cli.option("--out-name <name>", "Output base name");
 
-	for (let i = 0; i < argv.length; i++) {
-		const arg = argv[i]!;
-		if (arg === "--dump-ast") {
-			dumpAst = true;
-			continue;
-		}
-		if (arg === "--emit-llvm") {
-			emitLlvm = true;
-			continue;
-		}
-		if (arg === "--compile") {
-			compile = true;
-			emitLlvm = true;
-			continue;
-		}
-		if (arg === "--out-dir") {
-			const value = argv[i + 1];
-			if (!value) throw new Error("--out-dir requires a value");
-			outDir = value;
-			i++;
-			continue;
-		}
-		if (arg === "--out-name") {
-			const value = argv[i + 1];
-			if (!value) throw new Error("--out-name requires a value");
-			outName = value;
-			i++;
-			continue;
-		}
-		if (arg.startsWith("--")) {
-			throw new Error(`unknown option: ${arg}`);
-		}
-		if (filePath) {
-			throw new Error(`unexpected extra argument: ${arg}`);
-		}
-		filePath = arg;
+	cli.parse(["node", "ekzemplo2", ...argv], { run: false });
+
+	if (cli.args.length > 1) {
+		throw new Error(`unexpected extra argument: ${String(cli.args[1])}`);
 	}
 
-	return { filePath, options: { dumpAst, emitLlvm, compile, outDir, outName } };
+	const parsed = cli.options as {
+		dumpAst?: boolean;
+		emitLlvm?: boolean;
+		compile?: boolean;
+		outDir?: string;
+		outName?: string;
+	};
+
+	const compile = Boolean(parsed.compile);
+	const emitLlvm = Boolean(parsed.emitLlvm) || compile;
+	const filePath = cli.args[0] as string | undefined;
+
+	return {
+		filePath,
+		options: {
+			dumpAst: Boolean(parsed.dumpAst),
+			emitLlvm,
+			compile,
+			outDir: parsed.outDir ?? "output",
+			outName: parsed.outName,
+		},
+	};
 };

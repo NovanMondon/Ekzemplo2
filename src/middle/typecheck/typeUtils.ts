@@ -1,5 +1,6 @@
 import type { AstNode, TypeNode } from "../../frontend/ast.js";
 import { semanticError } from "../../diagnostics/compileDiagnostic.js";
+import { match } from "ts-pattern";
 
 export const isSameType = (left: TypeNode, right: TypeNode): boolean => {
 	if (left.kind !== right.kind) {
@@ -12,27 +13,21 @@ export const isSameType = (left: TypeNode, right: TypeNode): boolean => {
 };
 
 export const typeToString = (type: TypeNode): string => {
-	if (type.kind === "IntType") {
-		return "int";
-	}
-	if (type.kind === "BoolType") {
-		return "bool";
-	}
-	if (type.kind === "StringType") {
-		return "string";
-	}
-	if (type.kind === "CharType") {
-		return "char";
-	}
-	const elementType =
-		type.elementType.kind === "IntType"
-			? "int"
-			: type.elementType.kind === "BoolType"
-				? "bool"
-				: type.elementType.kind === "CharType"
-					? "char"
-					: "string";
-	return `${elementType}[${type.rawLength}]`;
+	return match(type)
+		.with({ kind: "IntType" }, () => "int")
+		.with({ kind: "BoolType" }, () => "bool")
+		.with({ kind: "StringType" }, () => "string")
+		.with({ kind: "CharType" }, () => "char")
+		.with({ kind: "ArrayType" }, (arrayType) => {
+			const elementType = match(arrayType.elementType)
+				.with({ kind: "IntType" }, () => "int")
+				.with({ kind: "BoolType" }, () => "bool")
+				.with({ kind: "CharType" }, () => "char")
+				.with({ kind: "StringType" }, () => "string")
+				.exhaustive();
+			return `${elementType}[${arrayType.rawLength}]`;
+		})
+		.exhaustive();
 };
 
 export const ensureSemanticSupportedType = (type: TypeNode, node: AstNode, where: string): void => {

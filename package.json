@@ -23,7 +23,10 @@
   },
   "homepage": "https://github.com/NovanMondon/Ekzemplo2#readme",
   "dependencies": {
-    "antlr4ng": "^3.0.16"
+    "antlr4ng": "^3.0.16",
+    "cac": "^6.7.14",
+    "execa": "^9.6.0",
+    "ts-pattern": "^5.8.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
