@@ -9,7 +9,12 @@ program
   ;
 
 functionDefinition
-  : KW_INT IDENT LPAREN RPAREN block
+  : typeName IDENT LPAREN RPAREN block
+  ;
+
+typeName
+  : KW_INT
+  | KW_BOOL
   ;
 
 block
@@ -21,7 +26,15 @@ returnStatement
   ;
 
 expr
-  : additiveExpr
+  : equalityExpr
+  ;
+
+equalityExpr
+  : relationalExpr ((EQ | NEQ) relationalExpr)*
+  ;
+
+relationalExpr
+  : additiveExpr ((LT | LTE | GT | GTE) additiveExpr)*
   ;
 
 additiveExpr
@@ -29,11 +42,18 @@ additiveExpr
   ;
 
 multiplicativeExpr
-  : primaryExpr ((STAR | SLASH) primaryExpr)*
+  : castExpr ((STAR | SLASH) castExpr)*
+  ;
+
+castExpr
+  : LPAREN typeName RPAREN castExpr
+  | primaryExpr
   ;
 
 primaryExpr
   : INT
+  | KW_TRUE
+  | KW_FALSE
   | IDENT
   | LPAREN expr RPAREN
   ;

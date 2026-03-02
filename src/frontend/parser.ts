@@ -1,17 +1,30 @@
 import * as antlr from "antlr4ng";
 
-import type { Block, Expr, FunctionDecl, IntLiteral, Program, ReturnStmt } from "./ast.js";
+import type {
+	Block,
+	BoolLiteral,
+	Expr,
+	FunctionDecl,
+	IntLiteral,
+	Program,
+	ReturnStmt,
+	TypeNode,
+} from "./ast.js";
 import { Ekzemplo2Lexer } from "./generated/Ekzemplo2Lexer.js";
 import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
 import type {
 	AdditiveExprContext,
 	BlockContext,
+	CastExprContext,
+	EqualityExprContext,
 	ExprContext,
 	FunctionDefinitionContext,
 	MultiplicativeExprContext,
 	PrimaryExprContext,
 	ProgramContext,
+	RelationalExprContext,
 	ReturnStatementContext,
+	TypeNameContext,
 } from "./generated/Ekzemplo2Parser.js";
 import { Ekzemplo2ParserVisitor } from "./generated/Ekzemplo2ParserVisitor.js";
 
@@ -69,7 +82,7 @@ export const buildAst = (tree: ProgramContext): Program => {
 	return result;
 };
 
-type AstResult = Program | FunctionDecl | Block | ReturnStmt | Expr;
+type AstResult = Program | FunctionDecl | Block | ReturnStmt | Expr | TypeNode;
 
 class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	public override visitProgram = (ctx: ProgramContext): Program => {
@@ -87,6 +100,10 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 
 	public override visitFunctionDefinition = (ctx: FunctionDefinitionContext): FunctionDecl => {
 		const nameText = ctx.IDENT().getText();
+		const returnType = ctx.typeName().accept(this);
+		if (!returnType || !isTypeNode(returnType)) {
+			throw new Error("internal error: expected type name");
+		}
 		const body = ctx.block().accept(this);
 		if (!body || body.kind !== "Block") {
 			throw new Error("internal error: expected Block");
@@ -94,7 +111,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		return {
 			kind: "FunctionDecl",
 			name: { kind: "Identifier", text: nameText },
-			returnType: { kind: "IntType" },
+			returnType,
 			params: [],
 			body,
 		};
@@ -117,11 +134,21 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	};
 
 	public override visitExpr = (ctx: ExprContext): Expr => {
-		const result = ctx.additiveExpr().accept(this);
+		const result = ctx.equalityExpr().accept(this);
 		if (!result || !isExpr(result)) {
 			throw new Error("internal error: expected Expr");
 		}
 		return result;
+	};
+
+	public override visitEqualityExpr = (ctx: EqualityExprContext): Expr => {
+		const parts = ctx.relationalExpr();
+		return foldBinaryExprs(parts, this, ["==", "!="]);
+	};
+
+	public override visitRelationalExpr = (ctx: RelationalExprContext): Expr => {
+		const parts = ctx.additiveExpr();
+		return foldBinaryExprs(parts, this, ["<", "<=", ">", ">="]);
 	};
 
 	public override visitAdditiveExpr = (ctx: AdditiveExprContext): Expr => {
@@ -130,14 +157,50 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	};
 
 	public override visitMultiplicativeExpr = (ctx: MultiplicativeExprContext): Expr => {
-		const primaries = ctx.primaryExpr();
-		return foldBinaryExprs(primaries, this, ["*", "/"]);
+		const parts = ctx.castExpr();
+		return foldBinaryExprs(parts, this, ["*", "/"]);
+	};
+
+	public override visitCastExpr = (ctx: CastExprContext): Expr => {
+		const typeName = ctx.typeName();
+		if (typeName) {
+			const targetType = typeName.accept(this);
+			if (!targetType || !isTypeNode(targetType)) {
+				throw new Error("internal error: expected type name");
+			}
+			const innerCtx = ctx.castExpr();
+			if (!innerCtx) {
+				throw new Error("internal error: expected castExpr");
+			}
+			const inner = innerCtx.accept(this);
+			if (!inner || !isExpr(inner)) {
+				throw new Error("internal error: expected Expr");
+			}
+			return { kind: "CastExpr", targetType, value: inner };
+		}
+		const primaryCtx = ctx.primaryExpr();
+		if (!primaryCtx) {
+			throw new Error("internal error: expected primaryExpr");
+		}
+		const primary = primaryCtx.accept(this);
+		if (!primary || !isExpr(primary)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return primary;
 	};
 
 	public override visitPrimaryExpr = (ctx: PrimaryExprContext): Expr => {
 		const intToken = ctx.INT();
 		if (intToken) {
 			return parseIntLiteral(intToken.getText());
+		}
+		const trueToken = ctx.KW_TRUE();
+		if (trueToken) {
+			return parseBoolLiteral(trueToken.getText());
+		}
+		const falseToken = ctx.KW_FALSE();
+		if (falseToken) {
+			return parseBoolLiteral(falseToken.getText());
 		}
 		const identToken = ctx.IDENT();
 		if (identToken) {
@@ -152,6 +215,18 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			return result;
 		}
 		throw new Error("internal error: invalid primaryExpr");
+	};
+
+	public override visitTypeName = (ctx: TypeNameContext): TypeNode => {
+		const intToken = ctx.KW_INT();
+		if (intToken) {
+			return { kind: "IntType" };
+		}
+		const boolToken = ctx.KW_BOOL();
+		if (boolToken) {
+			return { kind: "BoolType" };
+		}
+		throw new Error("internal error: invalid typeName");
 	};
 
 	protected override defaultResult(): AstResult | null {
@@ -175,7 +250,17 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 }
 
 const isExpr = (node: AstResult): node is Expr => {
-	return node.kind === "IntLiteral" || node.kind === "Identifier" || node.kind === "BinaryExpr";
+	return (
+		node.kind === "IntLiteral" ||
+		node.kind === "BoolLiteral" ||
+		node.kind === "Identifier" ||
+		node.kind === "BinaryExpr" ||
+		node.kind === "CastExpr"
+	);
+};
+
+const isTypeNode = (node: AstResult): node is TypeNode => {
+	return node.kind === "IntType" || node.kind === "BoolType";
 };
 
 const parseIntLiteral = (text: string): IntLiteral => {
@@ -186,10 +271,19 @@ const parseIntLiteral = (text: string): IntLiteral => {
 	return { kind: "IntLiteral", value, raw: text };
 };
 
+const parseBoolLiteral = (text: string): BoolLiteral => {
+	if (text !== "true" && text !== "false") {
+		throw new SyntaxError(`invalid bool literal: ${text}`);
+	}
+	return { kind: "BoolLiteral", value: text === "true", raw: text };
+};
+
+type BinaryOp = "+" | "-" | "*" | "/" | "==" | "!=" | "<" | "<=" | ">" | ">=";
+
 const foldBinaryExprs = (
 	parts: antlr.ParserRuleContext[],
 	visitor: AstBuilder,
-	validOps: Array<"+" | "-" | "*" | "/">,
+	validOps: BinaryOp[],
 ): Expr => {
 	if (parts.length === 0) {
 		throw new Error("internal error: expected at least one expression part");
@@ -217,17 +311,17 @@ const foldBinaryExprs = (
 
 const collectOps = (
 	firstPart: antlr.ParserRuleContext,
-	validOps: Array<"+" | "-" | "*" | "/">,
-): Array<"+" | "-" | "*" | "/"> => {
+	validOps: BinaryOp[],
+): BinaryOp[] => {
 	const parent = firstPart.parent;
 	if (!parent || !parent.children) {
 		return [];
 	}
-	const ops: Array<"+" | "-" | "*" | "/"> = [];
+	const ops: BinaryOp[] = [];
 	for (const child of parent.children) {
 		const text = child.getText?.();
-		if (text && validOps.includes(text as "+" | "-" | "*" | "/")) {
-			ops.push(text as "+" | "-" | "*" | "/");
+		if (text && validOps.includes(text as BinaryOp)) {
+			ops.push(text as BinaryOp);
 		}
 	}
 	return ops;

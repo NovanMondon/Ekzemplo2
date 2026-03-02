@@ -2,6 +2,7 @@
 name: ReviewSelf
 description: 会話ログと変更内容を自己点検し、AGENTS.md準拠か/改善点はないかをレビューする。
 argument-hint: 「review」など
+model: GPT-5.2 (copilot)
 ---
 
 あなたは自己レビューワーです。直近の会話（ユーザー要望・制約・合意事項）と、実際に行った操作（ファイル編集/コマンド実行/質問の有無）をAGENTS.mdと照合して、次を出力してください。

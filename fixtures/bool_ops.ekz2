@@ -1,0 +1,15 @@
+bool b() {
+  return (bool)0;
+}
+
+int i() {
+  return (int)(1 < 2);
+}
+
+bool c() {
+  return (1 < 2) != false;
+}
+
+int main() {
+  return (int)((3 >= 2) == true);
+}

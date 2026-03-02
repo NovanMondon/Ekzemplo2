@@ -6,7 +6,7 @@ export type Program = {
 export type FunctionDecl = {
 	kind: "FunctionDecl";
 	name: Identifier;
-	returnType: IntType;
+	returnType: TypeNode;
 	params: [];
 	body: Block;
 };
@@ -23,11 +23,11 @@ export type ReturnStmt = {
 	value: Expr;
 };
 
-export type Expr = IntLiteral | Identifier | BinaryExpr;
+export type Expr = IntLiteral | BoolLiteral | Identifier | BinaryExpr | CastExpr;
 
 export type BinaryExpr = {
 	kind: "BinaryExpr";
-	op: "+" | "-" | "*" | "/";
+	op: "+" | "-" | "*" | "/" | "==" | "!=" | "<" | "<=" | ">" | ">=";
 	left: Expr;
 	right: Expr;
 };
@@ -35,6 +35,12 @@ export type BinaryExpr = {
 export type IntLiteral = {
 	kind: "IntLiteral";
 	value: number;
+	raw: string;
+};
+
+export type BoolLiteral = {
+	kind: "BoolLiteral";
+	value: boolean;
 	raw: string;
 };
 
@@ -47,6 +53,18 @@ export type IntType = {
 	kind: "IntType";
 };
 
+export type BoolType = {
+	kind: "BoolType";
+};
+
+export type TypeNode = IntType | BoolType;
+
+export type CastExpr = {
+	kind: "CastExpr";
+	targetType: TypeNode;
+	value: Expr;
+};
+
 export type AstNode =
 	| Program
 	| FunctionDecl
@@ -54,5 +72,8 @@ export type AstNode =
 	| ReturnStmt
 	| BinaryExpr
 	| IntLiteral
+	| BoolLiteral
 	| Identifier
-	| IntType;
+	| IntType
+	| BoolType
+	| CastExpr;
