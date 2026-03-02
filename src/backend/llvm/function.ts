@@ -10,8 +10,10 @@ export const lowerMinimalFunction = (
 	ctx: ModuleEmitContext,
 ): { functionName: string; llvmIr: string } => {
 	let tempCounter = 0;
+	let labelCounter = 0;
 	const nextTemp = () => `%t${tempCounter++}`;
-	const fnCtx: FunctionEmitContext = { ...ctx, nextTemp, scopes: [new Map()] };
+	const nextLabel = (prefix: string) => `${prefix}.${labelCounter++}`;
+	const fnCtx: FunctionEmitContext = { ...ctx, nextTemp, nextLabel, scopes: [new Map()] };
 	const functionName = fn.name.text;
 	let prologue = "";
 

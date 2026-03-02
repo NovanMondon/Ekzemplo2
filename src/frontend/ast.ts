@@ -22,7 +22,7 @@ export type Block = {
 	statements: Statement[];
 };
 
-export type Statement = VarDeclStmt | AssignStmt | ExprStmt | ReturnStmt | Block;
+export type Statement = VarDeclStmt | AssignStmt | ExprStmt | IfStmt | ReturnStmt | Block;
 
 export type VarDeclStmt = {
 	kind: "VarDeclStmt";
@@ -40,6 +40,13 @@ export type AssignStmt = {
 export type ExprStmt = {
 	kind: "ExprStmt";
 	value: Expr;
+};
+
+export type IfStmt = {
+	kind: "IfStmt";
+	condition: Expr;
+	thenBranch: Statement;
+	elseBranch?: Statement;
 };
 
 export type ReturnStmt = {
@@ -103,6 +110,7 @@ export type AstNode =
 	| VarDeclStmt
 	| AssignStmt
 	| ExprStmt
+	| IfStmt
 	| ReturnStmt
 	| CallExpr
 	| BinaryExpr

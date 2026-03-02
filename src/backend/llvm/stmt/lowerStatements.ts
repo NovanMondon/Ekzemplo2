@@ -2,6 +2,7 @@ import type { Statement, TypeNode } from "../../../frontend/ast.js";
 import type { FunctionEmitContext } from "../env.js";
 import { lowerAssignStatement } from "./assignStmt.js";
 import { lowerExprStatement } from "./exprStmt.js";
+import { lowerIfStatement } from "./ifStmt.js";
 import { lowerReturnStatement } from "./returnStmt.js";
 import { lowerVarDeclStatement } from "./varDeclStmt.js";
 
@@ -30,11 +31,16 @@ export const lowerStatements = (
 		}
 
 		if (stmt.kind === "Block") {
-			ctx.scopes.push(new Map());
-			const nested = lowerStatements(stmt.statements, returnType, ctx);
-			ctx.scopes.pop();
+			const nested = lowerBlockStatements(stmt.statements, returnType, ctx);
 			code += nested.code;
 			terminated = nested.terminated;
+			continue;
+		}
+
+		if (stmt.kind === "IfStmt") {
+			const loweredIf = lowerIfStatement(stmt, returnType, ctx);
+			code += loweredIf.code;
+			terminated = loweredIf.terminated;
 			continue;
 		}
 
@@ -55,4 +61,15 @@ export const lowerStatements = (
 	}
 
 	return { code, terminated };
+};
+
+const lowerBlockStatements = (
+	statements: Statement[],
+	returnType: TypeNode,
+	ctx: FunctionEmitContext,
+): LoweredStatements => {
+	ctx.scopes.push(new Map());
+	const lowered = lowerStatements(statements, returnType, ctx);
+	ctx.scopes.pop();
+	return lowered;
 };

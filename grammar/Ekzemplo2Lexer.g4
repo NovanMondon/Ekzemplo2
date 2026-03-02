@@ -7,6 +7,8 @@ BLOCK_COMMENT: '/*' .*? '*/' -> skip;
 
 KW_INT: 'int';
 KW_BOOL: 'bool';
+KW_IF: 'if';
+KW_ELSE: 'else';
 KW_RETURN: 'return';
 KW_TRUE: 'true';
 KW_FALSE: 'false';

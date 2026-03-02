@@ -7,6 +7,7 @@ import type {
 	Expr,
 	ExprStmt,
 	FunctionDecl,
+	IfStmt,
 	IntLiteral,
 	ParamDecl,
 	Program,
@@ -27,6 +28,7 @@ import type {
 	ExpressionStatementContext,
 	ExprContext,
 	FunctionDefinitionContext,
+	IfStatementContext,
 	MultiplicativeExprContext,
 	ParameterContext,
 	PrimaryExprContext,
@@ -191,6 +193,15 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			return stmt;
 		}
 
+		const ifStmt = ctx.ifStatement();
+		if (ifStmt) {
+			const stmt = ifStmt.accept(this);
+			if (!stmt || stmt.kind !== "IfStmt") {
+				throw new Error("internal error: expected IfStmt");
+			}
+			return stmt;
+		}
+
 		const exprStmt = ctx.expressionStatement();
 		if (exprStmt) {
 			const stmt = exprStmt.accept(this);
@@ -264,6 +275,32 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			throw new Error("internal error: expected Expr");
 		}
 		return { kind: "ReturnStmt", value };
+	};
+
+	public override visitIfStatement = (ctx: IfStatementContext): IfStmt => {
+		const condition = ctx.expr().accept(this);
+		if (!condition || !isExpr(condition)) {
+			throw new Error("internal error: expected Expr");
+		}
+		const thenBranchCtx = ctx.statement(0);
+		if (!thenBranchCtx) {
+			throw new Error("internal error: expected then statement");
+		}
+		const thenBranch = thenBranchCtx.accept(this);
+		if (!thenBranch || !isStatement(thenBranch)) {
+			throw new Error("internal error: expected Statement");
+		}
+
+		const elseBranchCtx = ctx.statement(1);
+		if (elseBranchCtx) {
+			const elseBranch = elseBranchCtx.accept(this);
+			if (!elseBranch || !isStatement(elseBranch)) {
+				throw new Error("internal error: expected Statement");
+			}
+			return { kind: "IfStmt", condition, thenBranch, elseBranch };
+		}
+
+		return { kind: "IfStmt", condition, thenBranch };
 	};
 
 	public override visitExpr = (ctx: ExprContext): Expr => {
@@ -422,6 +459,7 @@ const isStatement = (node: AstResult): node is Statement => {
 		node.kind === "VarDeclStmt" ||
 		node.kind === "AssignStmt" ||
 		node.kind === "ExprStmt" ||
+		node.kind === "IfStmt" ||
 		node.kind === "ReturnStmt" ||
 		node.kind === "Block"
 	);

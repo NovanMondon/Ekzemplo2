@@ -20,5 +20,6 @@ export type VariableBinding = {
 
 export type FunctionEmitContext = ModuleEmitContext & {
 	nextTemp: () => string;
+	nextLabel: (prefix: string) => string;
 	scopes: Map<string, VariableBinding>[];
 };

@@ -32,9 +32,14 @@ block
 statement
   : variableDeclaration
   | assignmentStatement
+  | ifStatement
   | returnStatement
   | expressionStatement
   | block
+  ;
+
+ifStatement
+  : KW_IF LPAREN expr RPAREN statement (KW_ELSE statement)?
   ;
 
 expressionStatement
