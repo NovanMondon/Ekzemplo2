@@ -13,7 +13,13 @@ export const lowerMinimalFunction = (
 	let labelCounter = 0;
 	const nextTemp = () => `%t${tempCounter++}`;
 	const nextLabel = (prefix: string) => `${prefix}.${labelCounter++}`;
-	const fnCtx: FunctionEmitContext = { ...ctx, nextTemp, nextLabel, scopes: [new Map()] };
+	const fnCtx: FunctionEmitContext = {
+		...ctx,
+		nextTemp,
+		nextLabel,
+		scopes: [new Map()],
+		loopTargets: [],
+	};
 	const functionName = fn.name.text;
 	let prologue = "";
 
@@ -35,7 +41,7 @@ export const lowerMinimalFunction = (
 	}
 
 	const loweredBody = lowerStatements(fn.body.statements, fn.returnType, fnCtx);
-	if (!loweredBody.terminated) {
+	if (loweredBody.exit !== "return") {
 		throw new Error("expected return statement");
 	}
 	const body = prologue + loweredBody.code;

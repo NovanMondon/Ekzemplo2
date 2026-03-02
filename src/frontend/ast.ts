@@ -22,7 +22,17 @@ export type Block = {
 	statements: Statement[];
 };
 
-export type Statement = VarDeclStmt | AssignStmt | ExprStmt | IfStmt | ReturnStmt | Block;
+export type Statement =
+	| VarDeclStmt
+	| AssignStmt
+	| ExprStmt
+	| IfStmt
+	| ForStmt
+	| WhileStmt
+	| BreakStmt
+	| ContinueStmt
+	| ReturnStmt
+	| Block;
 
 export type VarDeclStmt = {
 	kind: "VarDeclStmt";
@@ -47,6 +57,32 @@ export type IfStmt = {
 	condition: Expr;
 	thenBranch: Statement;
 	elseBranch?: Statement;
+};
+
+export type ForStmt = {
+	kind: "ForStmt";
+	init?: ForInit;
+	condition?: Expr;
+	update?: ForUpdate;
+	body: Statement;
+};
+
+export type ForInit = VarDeclStmt | AssignStmt | ExprStmt;
+
+export type ForUpdate = AssignStmt | ExprStmt;
+
+export type WhileStmt = {
+	kind: "WhileStmt";
+	condition: Expr;
+	body: Statement;
+};
+
+export type BreakStmt = {
+	kind: "BreakStmt";
+};
+
+export type ContinueStmt = {
+	kind: "ContinueStmt";
 };
 
 export type ReturnStmt = {
@@ -111,6 +147,10 @@ export type AstNode =
 	| AssignStmt
 	| ExprStmt
 	| IfStmt
+	| ForStmt
+	| WhileStmt
+	| BreakStmt
+	| ContinueStmt
 	| ReturnStmt
 	| CallExpr
 	| BinaryExpr

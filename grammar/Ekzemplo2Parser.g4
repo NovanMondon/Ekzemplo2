@@ -33,6 +33,10 @@ statement
   : variableDeclaration
   | assignmentStatement
   | ifStatement
+  | forStatement
+  | whileStatement
+  | breakStatement
+  | continueStatement
   | returnStatement
   | expressionStatement
   | block
@@ -40,6 +44,33 @@ statement
 
 ifStatement
   : KW_IF LPAREN expr RPAREN statement (KW_ELSE statement)?
+  ;
+
+forStatement
+  : KW_FOR LPAREN forInit? SEMI expr? SEMI forUpdate? RPAREN statement
+  ;
+
+forInit
+  : typeName IDENT (ASSIGN expr)?
+  | IDENT ASSIGN expr
+  | expr
+  ;
+
+forUpdate
+  : IDENT ASSIGN expr
+  | expr
+  ;
+
+whileStatement
+  : KW_WHILE LPAREN expr RPAREN statement
+  ;
+
+breakStatement
+  : KW_BREAK SEMI
+  ;
+
+continueStatement
+  : KW_CONTINUE SEMI
   ;
 
 expressionStatement

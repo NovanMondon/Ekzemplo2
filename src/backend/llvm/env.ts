@@ -22,4 +22,5 @@ export type FunctionEmitContext = ModuleEmitContext & {
 	nextTemp: () => string;
 	nextLabel: (prefix: string) => string;
 	scopes: Map<string, VariableBinding>[];
+	loopTargets: { breakLabel: string; continueLabel: string }[];
 };

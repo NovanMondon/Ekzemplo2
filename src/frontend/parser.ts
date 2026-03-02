@@ -4,8 +4,11 @@ import type {
 	AssignStmt,
 	Block,
 	BoolLiteral,
+	BreakStmt,
+	ContinueStmt,
 	Expr,
 	ExprStmt,
+	ForStmt,
 	FunctionDecl,
 	IfStmt,
 	IntLiteral,
@@ -15,6 +18,7 @@ import type {
 	Statement,
 	TypeNode,
 	VarDeclStmt,
+	WhileStmt,
 } from "./ast.js";
 import { Ekzemplo2Lexer } from "./generated/Ekzemplo2Lexer.js";
 import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
@@ -23,10 +27,15 @@ import type {
 	ArgumentListContext,
 	AssignmentStatementContext,
 	BlockContext,
+	BreakStatementContext,
 	CastExprContext,
+	ContinueStatementContext,
 	EqualityExprContext,
 	ExpressionStatementContext,
 	ExprContext,
+	ForInitContext,
+	ForStatementContext,
+	ForUpdateContext,
 	FunctionDefinitionContext,
 	IfStatementContext,
 	MultiplicativeExprContext,
@@ -38,6 +47,7 @@ import type {
 	StatementContext,
 	TypeNameContext,
 	VariableDeclarationContext,
+	WhileStatementContext,
 } from "./generated/Ekzemplo2Parser.js";
 import { Ekzemplo2ParserVisitor } from "./generated/Ekzemplo2ParserVisitor.js";
 
@@ -202,6 +212,42 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			return stmt;
 		}
 
+		const whileStmt = ctx.whileStatement();
+		if (whileStmt) {
+			const stmt = whileStmt.accept(this);
+			if (!stmt || stmt.kind !== "WhileStmt") {
+				throw new Error("internal error: expected WhileStmt");
+			}
+			return stmt;
+		}
+
+		const forStmt = ctx.forStatement();
+		if (forStmt) {
+			const stmt = forStmt.accept(this);
+			if (!stmt || stmt.kind !== "ForStmt") {
+				throw new Error("internal error: expected ForStmt");
+			}
+			return stmt;
+		}
+
+		const breakStmt = ctx.breakStatement();
+		if (breakStmt) {
+			const stmt = breakStmt.accept(this);
+			if (!stmt || stmt.kind !== "BreakStmt") {
+				throw new Error("internal error: expected BreakStmt");
+			}
+			return stmt;
+		}
+
+		const continueStmt = ctx.continueStatement();
+		if (continueStmt) {
+			const stmt = continueStmt.accept(this);
+			if (!stmt || stmt.kind !== "ContinueStmt") {
+				throw new Error("internal error: expected ContinueStmt");
+			}
+			return stmt;
+		}
+
 		const exprStmt = ctx.expressionStatement();
 		if (exprStmt) {
 			const stmt = exprStmt.accept(this);
@@ -302,6 +348,152 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 
 		return { kind: "IfStmt", condition, thenBranch };
 	};
+
+	public override visitForStatement = (ctx: ForStatementContext): ForStmt => {
+		const init = this.buildForInit(ctx.forInit());
+		const conditionCtx = ctx.expr();
+		let condition: Expr | undefined;
+		if (conditionCtx) {
+			const parsed = conditionCtx.accept(this);
+			if (!parsed || !isExpr(parsed)) {
+				throw new Error("internal error: expected Expr");
+			}
+			condition = parsed;
+		}
+		const update = this.buildForUpdate(ctx.forUpdate());
+
+		const bodyCtx = ctx.statement();
+		if (!bodyCtx) {
+			throw new Error("internal error: expected statement");
+		}
+		const body = bodyCtx.accept(this);
+		if (!body || !isStatement(body)) {
+			throw new Error("internal error: expected Statement");
+		}
+
+		return { kind: "ForStmt", init, condition, update, body };
+	};
+
+	public override visitWhileStatement = (ctx: WhileStatementContext): WhileStmt => {
+		const condition = ctx.expr().accept(this);
+		if (!condition || !isExpr(condition)) {
+			throw new Error("internal error: expected Expr");
+		}
+		const bodyCtx = ctx.statement();
+		if (!bodyCtx) {
+			throw new Error("internal error: expected statement");
+		}
+		const body = bodyCtx.accept(this);
+		if (!body || !isStatement(body)) {
+			throw new Error("internal error: expected Statement");
+		}
+		return { kind: "WhileStmt", condition, body };
+	};
+
+	public override visitBreakStatement = (_ctx: BreakStatementContext): BreakStmt => {
+		return { kind: "BreakStmt" };
+	};
+
+	public override visitContinueStatement = (_ctx: ContinueStatementContext): ContinueStmt => {
+		return { kind: "ContinueStmt" };
+	};
+
+	private buildForInit(ctx: ForInitContext | null): ForStmt["init"] {
+		if (!ctx) {
+			return undefined;
+		}
+		const typeName = ctx.typeName();
+		if (typeName) {
+			const type = typeName.accept(this);
+			if (!type || !isTypeNode(type)) {
+				throw new Error("internal error: expected type name");
+			}
+			const nameToken = ctx.IDENT();
+			if (!nameToken) {
+				throw new Error("internal error: expected identifier");
+			}
+			const initExprCtx = ctx.expr();
+			if (initExprCtx) {
+				const initializer = initExprCtx.accept(this);
+				if (!initializer || !isExpr(initializer)) {
+					throw new Error("internal error: expected Expr");
+				}
+				return {
+					kind: "VarDeclStmt",
+					name: { kind: "Identifier", text: nameToken.getText() },
+					type,
+					initializer,
+				};
+			}
+			return {
+				kind: "VarDeclStmt",
+				name: { kind: "Identifier", text: nameToken.getText() },
+				type,
+			};
+		}
+
+		const identToken = ctx.IDENT();
+		const assignToken = ctx.ASSIGN();
+		if (identToken && assignToken) {
+			const value = ctx.expr();
+			if (!value) {
+				throw new Error("internal error: expected Expr");
+			}
+			const parsed = value.accept(this);
+			if (!parsed || !isExpr(parsed)) {
+				throw new Error("internal error: expected Expr");
+			}
+			return {
+				kind: "AssignStmt",
+				target: { kind: "Identifier", text: identToken.getText() },
+				value: parsed,
+			};
+		}
+
+		const exprCtx = ctx.expr();
+		if (!exprCtx) {
+			throw new Error("internal error: expected Expr");
+		}
+		const value = exprCtx.accept(this);
+		if (!value || !isExpr(value)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return { kind: "ExprStmt", value };
+	}
+
+	private buildForUpdate(ctx: ForUpdateContext | null): ForStmt["update"] {
+		if (!ctx) {
+			return undefined;
+		}
+
+		const identToken = ctx.IDENT();
+		const assignToken = ctx.ASSIGN();
+		if (identToken && assignToken) {
+			const value = ctx.expr();
+			if (!value) {
+				throw new Error("internal error: expected Expr");
+			}
+			const parsed = value.accept(this);
+			if (!parsed || !isExpr(parsed)) {
+				throw new Error("internal error: expected Expr");
+			}
+			return {
+				kind: "AssignStmt",
+				target: { kind: "Identifier", text: identToken.getText() },
+				value: parsed,
+			};
+		}
+
+		const exprCtx = ctx.expr();
+		if (!exprCtx) {
+			throw new Error("internal error: expected Expr");
+		}
+		const value = exprCtx.accept(this);
+		if (!value || !isExpr(value)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return { kind: "ExprStmt", value };
+	}
 
 	public override visitExpr = (ctx: ExprContext): Expr => {
 		const result = ctx.equalityExpr().accept(this);
@@ -460,6 +652,10 @@ const isStatement = (node: AstResult): node is Statement => {
 		node.kind === "AssignStmt" ||
 		node.kind === "ExprStmt" ||
 		node.kind === "IfStmt" ||
+		node.kind === "ForStmt" ||
+		node.kind === "WhileStmt" ||
+		node.kind === "BreakStmt" ||
+		node.kind === "ContinueStmt" ||
 		node.kind === "ReturnStmt" ||
 		node.kind === "Block"
 	);

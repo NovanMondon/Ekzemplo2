@@ -1,14 +1,20 @@
 import type { Statement, TypeNode } from "../../../frontend/ast.js";
 import type { FunctionEmitContext } from "../env.js";
 import { lowerAssignStatement } from "./assignStmt.js";
+import { lowerBreakStatement } from "./breakStmt.js";
+import { lowerContinueStatement } from "./continueStmt.js";
 import { lowerExprStatement } from "./exprStmt.js";
+import { lowerForStatement } from "./forStmt.js";
 import { lowerIfStatement } from "./ifStmt.js";
 import { lowerReturnStatement } from "./returnStmt.js";
 import { lowerVarDeclStatement } from "./varDeclStmt.js";
+import { lowerWhileStatement } from "./whileStmt.js";
+
+export type ExitKind = "none" | "return" | "break" | "continue" | "mixed";
 
 export type LoweredStatements = {
 	code: string;
-	terminated: boolean;
+	exit: ExitKind;
 };
 
 export const lowerStatements = (
@@ -17,30 +23,52 @@ export const lowerStatements = (
 	ctx: FunctionEmitContext,
 ): LoweredStatements => {
 	let code = "";
-	let terminated = false;
+	let exit: ExitKind = "none";
 
 	for (const stmt of statements) {
-		if (terminated) {
-			throw new Error("statements after return are not allowed");
+		if (exit !== "none") {
+			throw new Error("statements after terminating statement are not allowed");
 		}
 
 		if (stmt.kind === "ReturnStmt") {
 			code += lowerReturnStatement(stmt, returnType, ctx);
-			terminated = true;
+			exit = "return";
+			continue;
+		}
+
+		if (stmt.kind === "BreakStmt") {
+			code += lowerBreakStatement(stmt, ctx);
+			exit = "break";
+			continue;
+		}
+
+		if (stmt.kind === "ContinueStmt") {
+			code += lowerContinueStatement(stmt, ctx);
+			exit = "continue";
 			continue;
 		}
 
 		if (stmt.kind === "Block") {
 			const nested = lowerBlockStatements(stmt.statements, returnType, ctx);
 			code += nested.code;
-			terminated = nested.terminated;
+			exit = nested.exit;
 			continue;
 		}
 
 		if (stmt.kind === "IfStmt") {
 			const loweredIf = lowerIfStatement(stmt, returnType, ctx);
 			code += loweredIf.code;
-			terminated = loweredIf.terminated;
+			exit = loweredIf.exit;
+			continue;
+		}
+
+		if (stmt.kind === "ForStmt") {
+			code += lowerForStatement(stmt, returnType, ctx);
+			continue;
+		}
+
+		if (stmt.kind === "WhileStmt") {
+			code += lowerWhileStatement(stmt, returnType, ctx);
 			continue;
 		}
 
@@ -60,7 +88,7 @@ export const lowerStatements = (
 		}
 	}
 
-	return { code, terminated };
+	return { code, exit };
 };
 
 const lowerBlockStatements = (

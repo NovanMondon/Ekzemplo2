@@ -25,36 +25,36 @@ export const lowerIfStatement = (
 		code += `  br i1 ${condition.value}, label %${thenLabel}, label %${endLabel}\n`;
 		code += `${thenLabel}:\n`;
 		code += loweredThen.code;
-		if (!loweredThen.terminated) {
+		if (loweredThen.exit === "none") {
 			code += `  br label %${endLabel}\n`;
 		}
 		code += `${endLabel}:\n`;
-		return { code, terminated: false };
+		return { code, exit: "none" };
 	}
 
 	const elseLabel = ctx.nextLabel("if.else");
 	const loweredElse = lowerSingleStatement(stmt.elseBranch, returnType, ctx);
-	const terminated = loweredThen.terminated && loweredElse.terminated;
-	const endLabel = terminated ? null : ctx.nextLabel("if.end");
+	const exit = mergeBranchExit(loweredThen.exit, loweredElse.exit);
+	const endLabel = exit === "none" ? ctx.nextLabel("if.end") : null;
 
 	let code = "";
 	code += condition.code;
 	code += `  br i1 ${condition.value}, label %${thenLabel}, label %${elseLabel}\n`;
 	code += `${thenLabel}:\n`;
 	code += loweredThen.code;
-	if (endLabel && !loweredThen.terminated) {
+	if (endLabel && loweredThen.exit === "none") {
 		code += `  br label %${endLabel}\n`;
 	}
 	code += `${elseLabel}:\n`;
 	code += loweredElse.code;
-	if (endLabel && !loweredElse.terminated) {
+	if (endLabel && loweredElse.exit === "none") {
 		code += `  br label %${endLabel}\n`;
 	}
 	if (endLabel) {
 		code += `${endLabel}:\n`;
 	}
 
-	return { code, terminated };
+	return { code, exit };
 };
 
 const lowerSingleStatement = (
@@ -63,4 +63,14 @@ const lowerSingleStatement = (
 	ctx: FunctionEmitContext,
 ): LoweredStatements => {
 	return lowerStatements([statement], returnType, ctx);
+};
+
+const mergeBranchExit = (thenExit: LoweredStatements["exit"], elseExit: LoweredStatements["exit"]) => {
+	if (thenExit === "none" || elseExit === "none") {
+		return "none" as const;
+	}
+	if (thenExit === elseExit) {
+		return thenExit;
+	}
+	return "mixed" as const;
 };
