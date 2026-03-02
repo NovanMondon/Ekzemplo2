@@ -21,6 +21,10 @@ const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 const indexes = new Map<string, DocumentIndex>();
 
+const rangeKey = (line: number, start: number, end: number): string => {
+	return `${line}:${start}:${end}`;
+};
+
 connection.onInitialize((_params: InitializeParams) => {
 	return {
 		capabilities: {
@@ -70,8 +74,12 @@ connection.onHover((params) => {
 	if (!word) {
 		return null;
 	}
-	const definitions = index.definitionsByName.get(word.text) ?? [];
-	const symbol = definitions[0];
+	const key = rangeKey(word.range.start.line, word.range.start.character, word.range.end.character);
+	const scopedDefinitionIds = index.definitionIdsByRangeKey.get(key) ?? [];
+	const symbol =
+		(scopedDefinitionIds.length > 0
+			? index.symbolByDefinitionId.get(scopedDefinitionIds[0])
+			: undefined) ?? (index.definitionsByName.get(word.text) ?? [])[0];
 	if (!symbol) {
 		if (KEYWORDS.has(word.text) || TYPE_NAMES.has(word.text)) {
 			return {
@@ -108,6 +116,11 @@ connection.onDefinition((params): Definition | null => {
 	if (!word) {
 		return null;
 	}
+	const key = rangeKey(word.range.start.line, word.range.start.character, word.range.end.character);
+	const scopedDefinitions = index.definitionTargetsByRangeKey.get(key) ?? [];
+	if (scopedDefinitions.length > 0) {
+		return scopedDefinitions;
+	}
 	const definitions = index.definitionsByName.get(word.text) ?? [];
 	if (definitions.length === 0) {
 		return null;
@@ -125,6 +138,28 @@ connection.onReferences((params: ReferenceParams) => {
 	if (!word) {
 		return [];
 	}
+	const key = rangeKey(word.range.start.line, word.range.start.character, word.range.end.character);
+	const scopedDefinitionIds = index.definitionIdsByRangeKey.get(key) ?? [];
+	if (scopedDefinitionIds.length > 0) {
+		const merged = new Map<string, Location>();
+		for (const definitionId of scopedDefinitionIds) {
+			const scopedRefs = index.referencesByDefinitionId.get(definitionId) ?? [];
+			for (const location of scopedRefs) {
+				const locationKey = `${location.uri}:${location.range.start.line}:${location.range.start.character}:${location.range.end.character}`;
+				merged.set(locationKey, location);
+			}
+
+			if (params.context.includeDeclaration) {
+				const definitionLocation = index.locationByDefinitionId.get(definitionId);
+				if (definitionLocation) {
+					const locationKey = `${definitionLocation.uri}:${definitionLocation.range.start.line}:${definitionLocation.range.start.character}:${definitionLocation.range.end.character}`;
+					merged.set(locationKey, definitionLocation);
+				}
+			}
+		}
+		return [...merged.values()];
+	}
+
 	const references = index.referencesByName.get(word.text) ?? [];
 	if (!params.context.includeDeclaration) {
 		return references;

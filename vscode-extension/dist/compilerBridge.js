@@ -36,7 +36,7 @@ const workspaceRoot = () => {
 const analyzeWithCompiler = (sourceText) => {
     // `npm run` prints its own header lines to stdout, which would break JSON parsing.
     // Use `--silent` so stdout contains only the compiler output.
-    const run = (0, node_child_process_1.spawnSync)("npm", ["run", "--silent", "exec", "--", "--dump-ast"], {
+    const run = (0, node_child_process_1.spawnSync)("npm", ["run", "--silent", "exec", "--", "--dump-lsp-index"], {
         cwd: workspaceRoot(),
         input: sourceText,
         encoding: "utf8",
@@ -56,9 +56,27 @@ const analyzeWithCompiler = (sourceText) => {
     }
     if (run.status === 0) {
         try {
+            const parsed = JSON.parse(run.stdout);
+            const diagnostics = (parsed.diagnostics ?? []).map((diag) => {
+                const line = Math.max(0, Number(diag.line ?? 0));
+                const column = Math.max(0, Number(diag.column ?? 0));
+                const length = Math.max(1, Number(diag.length ?? 1));
+                return {
+                    severity: diag.severity === "warning"
+                        ? node_1.DiagnosticSeverity.Warning
+                        : node_1.DiagnosticSeverity.Error,
+                    range: node_1.Range.create(line, column, line, column + length),
+                    message: diag.message ?? "compiler diagnostic",
+                    source: "ekzemplo2-ls",
+                };
+            });
             return {
-                ast: JSON.parse(run.stdout),
-                diagnostics: [],
+                lspIndex: {
+                    definitions: parsed.definitions ?? [],
+                    references: parsed.references ?? [],
+                    diagnostics,
+                },
+                diagnostics,
             };
         }
         catch {
@@ -67,7 +85,7 @@ const analyzeWithCompiler = (sourceText) => {
                     {
                         severity: node_1.DiagnosticSeverity.Error,
                         range: node_1.Range.create(0, 0, 0, 1),
-                        message: "compiler returned invalid AST JSON",
+                        message: "compiler returned invalid LSP index JSON",
                         source: "ekzemplo2-ls",
                     },
                 ],

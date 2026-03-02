@@ -4,7 +4,7 @@ import path from "node:path";
 import { Ekzemplo2Parser } from "../frontend/generated/Ekzemplo2Parser.js";
 import { parseArgs } from "./args.js";
 import { readSourceText } from "./io.js";
-import { compileAstToLlvmIr, compileToAst } from "../compiler/compile.js";
+import { compileAstToLlvmIr, compileToAst, compileToLspIndex } from "../compiler/compile.js";
 import { compileLlvmIrWithClang } from "../toolchain/clang.js";
 
 export const runCli = async (argv: string[]): Promise<void> => {
@@ -15,6 +15,12 @@ export const runCli = async (argv: string[]): Promise<void> => {
 
 	if (options.dumpAst) {
 		console.log(JSON.stringify(ast, null, 2));
+		return;
+	}
+
+	if (options.dumpLspIndex) {
+		const lspIndex = compileToLspIndex(sourceText, sourceName);
+		console.log(JSON.stringify(lspIndex, null, 2));
 		return;
 	}
 

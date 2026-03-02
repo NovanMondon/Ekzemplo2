@@ -2,6 +2,7 @@ import { cac } from "cac";
 
 export type CliOptions = {
 	dumpAst: boolean;
+	dumpLspIndex: boolean;
 	emitLlvm: boolean;
 	compile: boolean;
 	outDir: string;
@@ -16,6 +17,7 @@ export type CliArgs = {
 export const parseArgs = (argv: string[]): CliArgs => {
 	const cli = cac("ekzemplo2");
 	cli.option("--dump-ast", "Dump AST as JSON");
+	cli.option("--dump-lsp-index", "Dump scope-aware LSP index as JSON");
 	cli.option("--emit-llvm", "Emit LLVM IR (.ll)");
 	cli.option("--compile", "Emit LLVM IR and compile with clang");
 	cli.option("--out-dir <dir>", "Output directory", { default: "output" });
@@ -29,6 +31,7 @@ export const parseArgs = (argv: string[]): CliArgs => {
 
 	const parsed = cli.options as {
 		dumpAst?: boolean;
+		dumpLspIndex?: boolean;
 		emitLlvm?: boolean;
 		compile?: boolean;
 		outDir?: string;
@@ -43,6 +46,7 @@ export const parseArgs = (argv: string[]): CliArgs => {
 		filePath,
 		options: {
 			dumpAst: Boolean(parsed.dumpAst),
+			dumpLspIndex: Boolean(parsed.dumpLspIndex),
 			emitLlvm,
 			compile,
 			outDir: parsed.outDir ?? "output",

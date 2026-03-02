@@ -5,8 +5,46 @@ import * as path from "node:path";
 import { Diagnostic, DiagnosticSeverity, Range } from "vscode-languageserver/node";
 
 type CompilerAnalysis = {
-	ast?: unknown;
+	lspIndex?: CompilerLspIndex;
 	diagnostics: Diagnostic[];
+};
+
+export type CompilerLspDefinition = {
+	id: string;
+	name: string;
+	symbolType: "function" | "variable" | "parameter";
+	line: number;
+	column: number;
+	length: number;
+	containerName?: string;
+	detail?: string;
+};
+
+export type CompilerLspReference = {
+	name: string;
+	symbolType: "function" | "variable";
+	line: number;
+	column: number;
+	length: number;
+	resolvedDefinitionId?: string;
+};
+
+export type CompilerLspIndex = {
+	definitions: CompilerLspDefinition[];
+	references: CompilerLspReference[];
+	diagnostics: Diagnostic[];
+};
+
+type CompilerLspIndexJson = {
+	definitions?: CompilerLspDefinition[];
+	references?: CompilerLspReference[];
+	diagnostics?: Array<{
+		severity?: "error" | "warning";
+		message?: string;
+		line?: number;
+		column?: number;
+		length?: number;
+	}>;
 };
 
 const COMPILER_DIAG_REGEX = /^(.*?):(\d+):(\d+):\s*(syntax|type|semantic) error:\s*(.*)$/;
@@ -42,7 +80,7 @@ const workspaceRoot = (): string => {
 export const analyzeWithCompiler = (sourceText: string): CompilerAnalysis => {
 	// `npm run` prints its own header lines to stdout, which would break JSON parsing.
 	// Use `--silent` so stdout contains only the compiler output.
-	const run = spawnSync("npm", ["run", "--silent", "exec", "--", "--dump-ast"], {
+	const run = spawnSync("npm", ["run", "--silent", "exec", "--", "--dump-lsp-index"], {
 		cwd: workspaceRoot(),
 		input: sourceText,
 		encoding: "utf8",
@@ -64,9 +102,26 @@ export const analyzeWithCompiler = (sourceText: string): CompilerAnalysis => {
 
 	if (run.status === 0) {
 		try {
+			const parsed = JSON.parse(run.stdout) as CompilerLspIndexJson;
+			const diagnostics = (parsed.diagnostics ?? []).map((diag) => {
+				const line = Math.max(0, Number(diag.line ?? 0));
+				const column = Math.max(0, Number(diag.column ?? 0));
+				const length = Math.max(1, Number(diag.length ?? 1));
+				return {
+					severity:
+						diag.severity === "warning" ? DiagnosticSeverity.Warning : DiagnosticSeverity.Error,
+					range: Range.create(line, column, line, column + length),
+					message: diag.message ?? "compiler diagnostic",
+					source: "ekzemplo2-ls",
+				};
+			});
 			return {
-				ast: JSON.parse(run.stdout),
-				diagnostics: [],
+				lspIndex: {
+					definitions: parsed.definitions ?? [],
+					references: parsed.references ?? [],
+					diagnostics,
+				},
+				diagnostics,
 			};
 		} catch {
 			return {
@@ -74,7 +129,7 @@ export const analyzeWithCompiler = (sourceText: string): CompilerAnalysis => {
 					{
 						severity: DiagnosticSeverity.Error,
 						range: Range.create(0, 0, 0, 1),
-						message: "compiler returned invalid AST JSON",
+						message: "compiler returned invalid LSP index JSON",
 						source: "ekzemplo2-ls",
 					},
 				],

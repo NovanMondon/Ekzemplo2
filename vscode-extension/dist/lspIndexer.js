@@ -6,6 +6,9 @@ const compilerBridge_1 = require("./compilerBridge");
 const languageData_1 = require("./languageData");
 const lspModel_1 = require("./lspModel");
 const lspUtils_1 = require("./lspUtils");
+const rangeKey = (range) => {
+    return `${range.start.line}:${range.start.character}:${range.end.character}`;
+};
 const buildIndex = (document) => {
     const sourceText = document.getText();
     const lines = sourceText.split(/\r?\n/u);
@@ -14,9 +17,13 @@ const buildIndex = (document) => {
     const symbols = [];
     const definitionsByName = new Map();
     const referencesByName = new Map();
+    const definitionTargetsByRangeKey = new Map();
+    const definitionIdsByRangeKey = new Map();
+    const referencesByDefinitionId = new Map();
+    const symbolByDefinitionId = new Map();
+    const locationByDefinitionId = new Map();
     const documentSymbols = [];
-    const functionCallRefs = new Map();
-    const functionDefinitionRanges = new Map();
+    const functionSymbolsByName = new Map();
     const upsertToken = (token) => {
         if (token.length <= 0) {
             return;
@@ -33,21 +40,42 @@ const buildIndex = (document) => {
         defs.push(symbol);
         definitionsByName.set(symbol.name, defs);
     };
-    const pushReference = (name, range) => {
+    const pushReferenceByName = (name, location) => {
         const refs = referencesByName.get(name) ?? [];
-        refs.push(node_1.Location.create(document.uri, range));
+        refs.push(location);
         referencesByName.set(name, refs);
     };
-    const pushFunctionDefinition = (name, range) => {
-        const defs = functionDefinitionRanges.get(name) ?? [];
-        defs.push(node_1.Location.create(document.uri, range));
-        functionDefinitionRanges.set(name, defs);
+    const addDefinitionTarget = (key, location) => {
+        const existing = definitionTargetsByRangeKey.get(key) ?? [];
+        if (existing.some((item) => item.range.start.line === location.range.start.line &&
+            item.range.start.character === location.range.start.character &&
+            item.range.end.character === location.range.end.character)) {
+            return;
+        }
+        existing.push(location);
+        definitionTargetsByRangeKey.set(key, existing);
     };
-    const pushFunctionCall = (name, range) => {
-        const calls = functionCallRefs.get(name) ?? [];
-        calls.push(node_1.Location.create(document.uri, range));
-        functionCallRefs.set(name, calls);
-        pushReference(name, range);
+    const addDefinitionIdAtRange = (key, definitionId) => {
+        const existing = definitionIdsByRangeKey.get(key) ?? [];
+        if (!existing.includes(definitionId)) {
+            existing.push(definitionId);
+            definitionIdsByRangeKey.set(key, existing);
+        }
+    };
+    const addReferenceForDefinition = (definitionId, location) => {
+        const refs = referencesByDefinitionId.get(definitionId) ?? [];
+        refs.push(location);
+        referencesByDefinitionId.set(definitionId, refs);
+    };
+    const tokenTypeFromSymbolType = (symbolType) => {
+        switch (symbolType) {
+            case "function":
+                return "function";
+            case "parameter":
+                return "parameter";
+            case "variable":
+                return "variable";
+        }
     };
     lines.forEach((lineText, line) => {
         (0, lspUtils_1.pushRegexMatches)(lineText, line, languageData_1.KEYWORD_REGEX, "keyword", upsertToken);
@@ -59,40 +87,97 @@ const buildIndex = (document) => {
     });
     const analysis = (0, compilerBridge_1.analyzeWithCompiler)(sourceText);
     diagnostics.push(...analysis.diagnostics);
-    const root = analysis.ast;
-    if (root && root.kind === "Program") {
-        for (const externNode of asArray(root.externs)) {
-            processFunctionLike(externNode, true);
-        }
-        for (const functionNode of asArray(root.functions)) {
-            processFunctionLike(functionNode, false);
-        }
+    const compilerIndex = analysis.lspIndex;
+    if (!compilerIndex) {
+        return {
+            uri: document.uri,
+            lines,
+            tokenSpans: [...bySpan.values()].sort((a, b) => {
+                if (a.line !== b.line) {
+                    return a.line - b.line;
+                }
+                return a.start - b.start;
+            }),
+            diagnostics,
+            symbols,
+            definitionsByName,
+            referencesByName,
+            definitionTargetsByRangeKey,
+            definitionIdsByRangeKey,
+            referencesByDefinitionId,
+            symbolByDefinitionId,
+            locationByDefinitionId,
+            documentSymbols,
+        };
     }
-    for (const [name, defs] of functionDefinitionRanges) {
-        if (defs.length <= 1) {
+    for (const definition of compilerIndex.definitions) {
+        const range = (0, lspUtils_1.createRange)(definition.line, definition.column, definition.length);
+        upsertToken({
+            line: definition.line,
+            start: definition.column,
+            length: definition.length,
+            type: tokenTypeFromSymbolType(definition.symbolType),
+        });
+        const symbol = {
+            name: definition.name,
+            type: definition.symbolType,
+            range,
+            containerName: definition.containerName,
+            detail: definition.detail,
+        };
+        pushDefinition(symbol);
+        symbolByDefinitionId.set(definition.id, symbol);
+        const location = node_1.Location.create(document.uri, range);
+        locationByDefinitionId.set(definition.id, location);
+        addDefinitionTarget(rangeKey(range), location);
+        addDefinitionIdAtRange(rangeKey(range), definition.id);
+        referencesByDefinitionId.set(definition.id, referencesByDefinitionId.get(definition.id) ?? []);
+        if (definition.symbolType === "function") {
+            const functionSymbol = {
+                name: definition.name,
+                kind: node_1.SymbolKind.Function,
+                range,
+                selectionRange: range,
+                detail: definition.detail ?? "function",
+                children: [],
+            };
+            documentSymbols.push(functionSymbol);
+            functionSymbolsByName.set(definition.name, functionSymbol);
             continue;
         }
-        for (const duplicate of defs.slice(1)) {
-            diagnostics.push({
-                severity: node_1.DiagnosticSeverity.Error,
-                range: duplicate.range,
-                message: `duplicate function declaration '${name}'`,
-                source: "ekzemplo2-ls",
-            });
+        if (definition.symbolType === "variable") {
+            const owner = definition.containerName ? functionSymbolsByName.get(definition.containerName) : undefined;
+            if (owner) {
+                owner.children = owner.children ?? [];
+                owner.children.push({
+                    name: definition.name,
+                    kind: node_1.SymbolKind.Variable,
+                    range,
+                    selectionRange: range,
+                });
+            }
         }
     }
-    for (const [name, calls] of functionCallRefs) {
-        if (functionDefinitionRanges.has(name)) {
+    for (const reference of compilerIndex.references) {
+        const range = (0, lspUtils_1.createRange)(reference.line, reference.column, reference.length);
+        upsertToken({
+            line: reference.line,
+            start: reference.column,
+            length: reference.length,
+            type: reference.symbolType === "function" ? "function" : "variable",
+        });
+        const location = node_1.Location.create(document.uri, range);
+        pushReferenceByName(reference.name, location);
+        if (!reference.resolvedDefinitionId) {
             continue;
         }
-        for (const call of calls) {
-            diagnostics.push({
-                severity: node_1.DiagnosticSeverity.Warning,
-                range: call.range,
-                message: `call to undefined function '${name}'`,
-                source: "ekzemplo2-ls",
-            });
+        const definitionLocation = locationByDefinitionId.get(reference.resolvedDefinitionId);
+        if (!definitionLocation) {
+            continue;
         }
+        addDefinitionTarget(rangeKey(range), definitionLocation);
+        addDefinitionIdAtRange(rangeKey(range), reference.resolvedDefinitionId);
+        addReferenceForDefinition(reference.resolvedDefinitionId, location);
     }
     return {
         uri: document.uri,
@@ -107,228 +192,13 @@ const buildIndex = (document) => {
         symbols,
         definitionsByName,
         referencesByName,
+        definitionTargetsByRangeKey,
+        definitionIdsByRangeKey,
+        referencesByDefinitionId,
+        symbolByDefinitionId,
+        locationByDefinitionId,
         documentSymbols,
     };
-    function processFunctionLike(node, isExtern) {
-        const name = asIdentifier(node.name);
-        if (!name) {
-            return;
-        }
-        const functionRange = rangeFromIdentifier(name);
-        if (!functionRange) {
-            return;
-        }
-        upsertTokenFromIdentifier(name, "function");
-        const functionName = name.text;
-        pushDefinition({
-            name: functionName,
-            type: "function",
-            range: functionRange,
-            detail: isExtern ? `extern function ${functionName}` : `function ${functionName}`,
-        });
-        pushFunctionDefinition(functionName, functionRange);
-        const docSymbol = {
-            name: functionName,
-            kind: node_1.SymbolKind.Function,
-            range: functionRange,
-            selectionRange: functionRange,
-            detail: isExtern ? "extern" : "function",
-            children: [],
-        };
-        documentSymbols.push(docSymbol);
-        const seenParams = new Set();
-        for (const param of asArray(node.params)) {
-            const paramName = asIdentifier(param.name);
-            if (!paramName) {
-                continue;
-            }
-            const paramRange = rangeFromIdentifier(paramName);
-            if (!paramRange) {
-                continue;
-            }
-            upsertTokenFromIdentifier(paramName, "parameter");
-            pushDefinition({
-                name: paramName.text,
-                type: "parameter",
-                range: paramRange,
-                containerName: functionName,
-                detail: `${functionName} parameter`,
-            });
-            if (seenParams.has(paramName.text)) {
-                diagnostics.push({
-                    severity: node_1.DiagnosticSeverity.Error,
-                    range: paramRange,
-                    message: `duplicate parameter '${paramName.text}' in function '${functionName}'`,
-                    source: "ekzemplo2-ls",
-                });
-            }
-            seenParams.add(paramName.text);
-        }
-        if (!isExtern) {
-            processStatement(node.body ?? undefined, functionName, docSymbol);
-        }
-    }
-    function processStatement(statement, currentFunction, functionSymbol) {
-        if (!statement || typeof statement.kind !== "string") {
-            return;
-        }
-        switch (statement.kind) {
-            case "Block": {
-                for (const child of asArray(statement.statements)) {
-                    processStatement(child, currentFunction, functionSymbol);
-                }
-                return;
-            }
-            case "VarDeclStmt": {
-                const name = asIdentifier(statement.name);
-                if (!name) {
-                    processExpression(statement.initializer);
-                    return;
-                }
-                const variableRange = rangeFromIdentifier(name);
-                if (variableRange) {
-                    upsertTokenFromIdentifier(name, "variable");
-                    pushDefinition({
-                        name: name.text,
-                        type: "variable",
-                        range: variableRange,
-                        containerName: currentFunction,
-                    });
-                    functionSymbol.children = functionSymbol.children ?? [];
-                    functionSymbol.children.push({
-                        name: name.text,
-                        kind: node_1.SymbolKind.Variable,
-                        range: variableRange,
-                        selectionRange: variableRange,
-                    });
-                }
-                processExpression(statement.initializer);
-                return;
-            }
-            case "AssignStmt": {
-                processAssignTarget(statement.target);
-                processExpression(statement.value);
-                return;
-            }
-            case "ExprStmt":
-                processExpression(statement.value);
-                return;
-            case "IfStmt":
-                processExpression(statement.condition);
-                processStatement(statement.thenBranch, currentFunction, functionSymbol);
-                processStatement(statement.elseBranch, currentFunction, functionSymbol);
-                return;
-            case "ForStmt":
-                processStatement(statement.init, currentFunction, functionSymbol);
-                processExpression(statement.condition);
-                processStatement(statement.update, currentFunction, functionSymbol);
-                processStatement(statement.body, currentFunction, functionSymbol);
-                return;
-            case "WhileStmt":
-                processExpression(statement.condition);
-                processStatement(statement.body, currentFunction, functionSymbol);
-                return;
-            case "ReturnStmt":
-                processExpression(statement.value);
-                return;
-            default:
-                return;
-        }
-    }
-    function processAssignTarget(target) {
-        if (!target || typeof target.kind !== "string") {
-            return;
-        }
-        if (target.kind === "Identifier") {
-            processIdentifierReference(asIdentifier(target), "variable");
-            return;
-        }
-        if (target.kind === "IndexExpr") {
-            processIdentifierReference(asIdentifier(target.array), "variable");
-            processExpression(target.index);
-        }
-    }
-    function processExpression(expr) {
-        if (!expr || typeof expr.kind !== "string") {
-            return;
-        }
-        switch (expr.kind) {
-            case "Identifier":
-                processIdentifierReference(asIdentifier(expr), "variable");
-                return;
-            case "CallExpr": {
-                const callee = asIdentifier(expr.callee);
-                if (!callee) {
-                    for (const arg of asArray(expr.args)) {
-                        processExpression(arg);
-                    }
-                    return;
-                }
-                const callRange = rangeFromIdentifier(callee);
-                if (callRange) {
-                    upsertTokenFromIdentifier(callee, "function");
-                    pushFunctionCall(callee.text, callRange);
-                }
-                for (const arg of asArray(expr.args)) {
-                    processExpression(arg);
-                }
-                return;
-            }
-            case "IndexExpr":
-                processIdentifierReference(asIdentifier(expr.array), "variable");
-                processExpression(expr.index);
-                return;
-            case "BinaryExpr":
-                processExpression(expr.left);
-                processExpression(expr.right);
-                return;
-            case "CastExpr":
-                processExpression(expr.value);
-                return;
-            default:
-                return;
-        }
-    }
-    function processIdentifierReference(identifier, tokenType) {
-        const range = rangeFromIdentifier(identifier);
-        if (!identifier || !range) {
-            return;
-        }
-        if (languageData_1.KEYWORDS.has(identifier.text) || languageData_1.TYPE_NAMES.has(identifier.text)) {
-            return;
-        }
-        upsertTokenFromIdentifier(identifier, tokenType);
-        pushReference(identifier.text, range);
-    }
-    function upsertTokenFromIdentifier(identifier, type) {
-        if (!identifier?.loc || identifier.text.length <= 0) {
-            return;
-        }
-        const line = Math.max(0, identifier.loc.line - 1);
-        const start = Math.max(0, identifier.loc.column);
-        upsertToken({ line, start, length: identifier.text.length, type });
-    }
-    function rangeFromIdentifier(identifier) {
-        if (!identifier?.loc || identifier.text.length <= 0) {
-            return null;
-        }
-        const line = Math.max(0, identifier.loc.line - 1);
-        const start = Math.max(0, identifier.loc.column);
-        return (0, lspUtils_1.createRange)(line, start, identifier.text.length);
-    }
 };
 exports.buildIndex = buildIndex;
-const asArray = (value) => {
-    return Array.isArray(value) ? value : [];
-};
-const asIdentifier = (value) => {
-    if (!value || typeof value !== "object") {
-        return undefined;
-    }
-    const candidate = value;
-    if (candidate.kind !== "Identifier" || typeof candidate.text !== "string") {
-        return undefined;
-    }
-    return candidate;
-};
 //# sourceMappingURL=lspIndexer.js.map

@@ -1,8 +1,8 @@
 import {
 	Diagnostic,
-	DiagnosticSeverity,
 	DocumentSymbol,
 	Location,
+	Range,
 	SymbolKind,
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
@@ -10,32 +10,17 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { analyzeWithCompiler } from "./compilerBridge";
 import {
 	CHAR_REGEX,
-	KEYWORDS,
 	KEYWORD_REGEX,
 	NUMBER_REGEX,
 	OPERATOR_REGEX,
 	STRING_REGEX,
-	TYPE_NAMES,
 	TYPE_REGEX,
 } from "./languageData";
 import { DocumentIndex, SymbolInfo, TOKEN_PRIORITY, TokenSpan, TokenType } from "./lspModel";
 import { createRange, pushRegexMatches } from "./lspUtils";
 
-type SourceLocationLike = {
-	line: number;
-	column: number;
-};
-
-type IdentifierLike = {
-	kind: "Identifier";
-	text: string;
-	loc?: SourceLocationLike;
-};
-
-type AstLike = {
-	kind?: string;
-	loc?: SourceLocationLike;
-	[key: string]: unknown;
+const rangeKey = (range: Range): string => {
+	return `${range.start.line}:${range.start.character}:${range.end.character}`;
 };
 
 export const buildIndex = (document: TextDocument): DocumentIndex => {
@@ -46,9 +31,13 @@ export const buildIndex = (document: TextDocument): DocumentIndex => {
 	const symbols: SymbolInfo[] = [];
 	const definitionsByName = new Map<string, SymbolInfo[]>();
 	const referencesByName = new Map<string, Location[]>();
+	const definitionTargetsByRangeKey = new Map<string, Location[]>();
+	const definitionIdsByRangeKey = new Map<string, string[]>();
+	const referencesByDefinitionId = new Map<string, Location[]>();
+	const symbolByDefinitionId = new Map<string, SymbolInfo>();
+	const locationByDefinitionId = new Map<string, Location>();
 	const documentSymbols: DocumentSymbol[] = [];
-	const functionCallRefs = new Map<string, Location[]>();
-	const functionDefinitionRanges = new Map<string, Location[]>();
+	const functionSymbolsByName = new Map<string, DocumentSymbol>();
 
 	const upsertToken = (token: TokenSpan): void => {
 		if (token.length <= 0) {
@@ -68,23 +57,53 @@ export const buildIndex = (document: TextDocument): DocumentIndex => {
 		definitionsByName.set(symbol.name, defs);
 	};
 
-	const pushReference = (name: string, range: ReturnType<typeof createRange>): void => {
+	const pushReferenceByName = (name: string, location: Location): void => {
 		const refs = referencesByName.get(name) ?? [];
-		refs.push(Location.create(document.uri, range));
+		refs.push(location);
 		referencesByName.set(name, refs);
 	};
 
-	const pushFunctionDefinition = (name: string, range: ReturnType<typeof createRange>): void => {
-		const defs = functionDefinitionRanges.get(name) ?? [];
-		defs.push(Location.create(document.uri, range));
-		functionDefinitionRanges.set(name, defs);
+	const addDefinitionTarget = (key: string, location: Location): void => {
+		const existing = definitionTargetsByRangeKey.get(key) ?? [];
+		if (
+			existing.some(
+				(item) =>
+					item.range.start.line === location.range.start.line &&
+					item.range.start.character === location.range.start.character &&
+					item.range.end.character === location.range.end.character,
+			)
+		) {
+			return;
+		}
+		existing.push(location);
+		definitionTargetsByRangeKey.set(key, existing);
 	};
 
-	const pushFunctionCall = (name: string, range: ReturnType<typeof createRange>): void => {
-		const calls = functionCallRefs.get(name) ?? [];
-		calls.push(Location.create(document.uri, range));
-		functionCallRefs.set(name, calls);
-		pushReference(name, range);
+	const addDefinitionIdAtRange = (key: string, definitionId: string): void => {
+		const existing = definitionIdsByRangeKey.get(key) ?? [];
+		if (!existing.includes(definitionId)) {
+			existing.push(definitionId);
+			definitionIdsByRangeKey.set(key, existing);
+		}
+	};
+
+	const addReferenceForDefinition = (definitionId: string, location: Location): void => {
+		const refs = referencesByDefinitionId.get(definitionId) ?? [];
+		refs.push(location);
+		referencesByDefinitionId.set(definitionId, refs);
+	};
+
+	const tokenTypeFromSymbolType = (
+		symbolType: "function" | "variable" | "parameter",
+	): TokenType => {
+		switch (symbolType) {
+			case "function":
+				return "function";
+			case "parameter":
+				return "parameter";
+			case "variable":
+				return "variable";
+		}
 	};
 
 	lines.forEach((lineText, line) => {
@@ -98,42 +117,106 @@ export const buildIndex = (document: TextDocument): DocumentIndex => {
 
 	const analysis = analyzeWithCompiler(sourceText);
 	diagnostics.push(...analysis.diagnostics);
-	const root = analysis.ast as AstLike | undefined;
-	if (root && root.kind === "Program") {
-		for (const externNode of asArray(root.externs)) {
-			processFunctionLike(externNode, true);
+	const compilerIndex = analysis.lspIndex;
+	if (!compilerIndex) {
+		return {
+			uri: document.uri,
+			lines,
+			tokenSpans: [...bySpan.values()].sort((a, b) => {
+				if (a.line !== b.line) {
+					return a.line - b.line;
+				}
+				return a.start - b.start;
+			}),
+			diagnostics,
+			symbols,
+			definitionsByName,
+			referencesByName,
+			definitionTargetsByRangeKey,
+			definitionIdsByRangeKey,
+			referencesByDefinitionId,
+			symbolByDefinitionId,
+			locationByDefinitionId,
+			documentSymbols,
+		};
+	}
+
+	for (const definition of compilerIndex.definitions) {
+		const range = createRange(definition.line, definition.column, definition.length);
+		upsertToken({
+			line: definition.line,
+			start: definition.column,
+			length: definition.length,
+			type: tokenTypeFromSymbolType(definition.symbolType),
+		});
+
+		const symbol: SymbolInfo = {
+			name: definition.name,
+			type: definition.symbolType,
+			range,
+			containerName: definition.containerName,
+			detail: definition.detail,
+		};
+		pushDefinition(symbol);
+		symbolByDefinitionId.set(definition.id, symbol);
+
+		const location = Location.create(document.uri, range);
+		locationByDefinitionId.set(definition.id, location);
+		addDefinitionTarget(rangeKey(range), location);
+		addDefinitionIdAtRange(rangeKey(range), definition.id);
+		referencesByDefinitionId.set(definition.id, referencesByDefinitionId.get(definition.id) ?? []);
+
+		if (definition.symbolType === "function") {
+			const functionSymbol: DocumentSymbol = {
+				name: definition.name,
+				kind: SymbolKind.Function,
+				range,
+				selectionRange: range,
+				detail: definition.detail ?? "function",
+				children: [],
+			};
+			documentSymbols.push(functionSymbol);
+			functionSymbolsByName.set(definition.name, functionSymbol);
+			continue;
 		}
-		for (const functionNode of asArray(root.functions)) {
-			processFunctionLike(functionNode, false);
+
+		if (definition.symbolType === "variable") {
+			const owner = definition.containerName
+				? functionSymbolsByName.get(definition.containerName)
+				: undefined;
+			if (owner) {
+				owner.children = owner.children ?? [];
+				owner.children.push({
+					name: definition.name,
+					kind: SymbolKind.Variable,
+					range,
+					selectionRange: range,
+				});
+			}
 		}
 	}
 
-	for (const [name, defs] of functionDefinitionRanges) {
-		if (defs.length <= 1) {
-			continue;
-		}
-		for (const duplicate of defs.slice(1)) {
-			diagnostics.push({
-				severity: DiagnosticSeverity.Error,
-				range: duplicate.range,
-				message: `duplicate function declaration '${name}'`,
-				source: "ekzemplo2-ls",
-			});
-		}
-	}
+	for (const reference of compilerIndex.references) {
+		const range = createRange(reference.line, reference.column, reference.length);
+		upsertToken({
+			line: reference.line,
+			start: reference.column,
+			length: reference.length,
+			type: reference.symbolType === "function" ? "function" : "variable",
+		});
+		const location = Location.create(document.uri, range);
+		pushReferenceByName(reference.name, location);
 
-	for (const [name, calls] of functionCallRefs) {
-		if (functionDefinitionRanges.has(name)) {
+		if (!reference.resolvedDefinitionId) {
 			continue;
 		}
-		for (const call of calls) {
-			diagnostics.push({
-				severity: DiagnosticSeverity.Warning,
-				range: call.range,
-				message: `call to undefined function '${name}'`,
-				source: "ekzemplo2-ls",
-			});
+		const definitionLocation = locationByDefinitionId.get(reference.resolvedDefinitionId);
+		if (!definitionLocation) {
+			continue;
 		}
+		addDefinitionTarget(rangeKey(range), definitionLocation);
+		addDefinitionIdAtRange(rangeKey(range), reference.resolvedDefinitionId);
+		addReferenceForDefinition(reference.resolvedDefinitionId, location);
 	}
 
 	return {
@@ -149,256 +232,11 @@ export const buildIndex = (document: TextDocument): DocumentIndex => {
 		symbols,
 		definitionsByName,
 		referencesByName,
+		definitionTargetsByRangeKey,
+		definitionIdsByRangeKey,
+		referencesByDefinitionId,
+		symbolByDefinitionId,
+		locationByDefinitionId,
 		documentSymbols,
 	};
-
-	function processFunctionLike(node: AstLike, isExtern: boolean): void {
-		const name = asIdentifier(node.name);
-		if (!name) {
-			return;
-		}
-		const functionRange = rangeFromIdentifier(name);
-		if (!functionRange) {
-			return;
-		}
-		upsertTokenFromIdentifier(name, "function");
-		const functionName = name.text;
-		pushDefinition({
-			name: functionName,
-			type: "function",
-			range: functionRange,
-			detail: isExtern ? `extern function ${functionName}` : `function ${functionName}`,
-		});
-		pushFunctionDefinition(functionName, functionRange);
-
-		const docSymbol: DocumentSymbol = {
-			name: functionName,
-			kind: SymbolKind.Function,
-			range: functionRange,
-			selectionRange: functionRange,
-			detail: isExtern ? "extern" : "function",
-			children: [],
-		};
-		documentSymbols.push(docSymbol);
-
-		const seenParams = new Set<string>();
-		for (const param of asArray(node.params)) {
-			const paramName = asIdentifier((param as AstLike).name);
-			if (!paramName) {
-				continue;
-			}
-			const paramRange = rangeFromIdentifier(paramName);
-			if (!paramRange) {
-				continue;
-			}
-			upsertTokenFromIdentifier(paramName, "parameter");
-			pushDefinition({
-				name: paramName.text,
-				type: "parameter",
-				range: paramRange,
-				containerName: functionName,
-				detail: `${functionName} parameter`,
-			});
-			if (seenParams.has(paramName.text)) {
-				diagnostics.push({
-					severity: DiagnosticSeverity.Error,
-					range: paramRange,
-					message: `duplicate parameter '${paramName.text}' in function '${functionName}'`,
-					source: "ekzemplo2-ls",
-				});
-			}
-			seenParams.add(paramName.text);
-		}
-
-		if (!isExtern) {
-			processStatement((node.body as AstLike) ?? undefined, functionName, docSymbol);
-		}
-	}
-
-	function processStatement(
-		statement: AstLike | undefined,
-		currentFunction: string,
-		functionSymbol: DocumentSymbol,
-	): void {
-		if (!statement || typeof statement.kind !== "string") {
-			return;
-		}
-		switch (statement.kind) {
-			case "Block": {
-				for (const child of asArray(statement.statements)) {
-					processStatement(child, currentFunction, functionSymbol);
-				}
-				return;
-			}
-			case "VarDeclStmt": {
-				const name = asIdentifier(statement.name);
-				if (!name) {
-					processExpression(statement.initializer as AstLike | undefined);
-					return;
-				}
-				const variableRange = rangeFromIdentifier(name);
-				if (variableRange) {
-					upsertTokenFromIdentifier(name, "variable");
-					pushDefinition({
-						name: name.text,
-						type: "variable",
-						range: variableRange,
-						containerName: currentFunction,
-					});
-					functionSymbol.children = functionSymbol.children ?? [];
-					functionSymbol.children.push({
-						name: name.text,
-						kind: SymbolKind.Variable,
-						range: variableRange,
-						selectionRange: variableRange,
-					});
-				}
-				processExpression(statement.initializer as AstLike | undefined);
-				return;
-			}
-			case "AssignStmt": {
-				processAssignTarget(statement.target as AstLike | undefined);
-				processExpression(statement.value as AstLike | undefined);
-				return;
-			}
-			case "ExprStmt":
-				processExpression(statement.value as AstLike | undefined);
-				return;
-			case "IfStmt":
-				processExpression(statement.condition as AstLike | undefined);
-				processStatement(
-					statement.thenBranch as AstLike | undefined,
-					currentFunction,
-					functionSymbol,
-				);
-				processStatement(
-					statement.elseBranch as AstLike | undefined,
-					currentFunction,
-					functionSymbol,
-				);
-				return;
-			case "ForStmt":
-				processStatement(statement.init as AstLike | undefined, currentFunction, functionSymbol);
-				processExpression(statement.condition as AstLike | undefined);
-				processStatement(statement.update as AstLike | undefined, currentFunction, functionSymbol);
-				processStatement(statement.body as AstLike | undefined, currentFunction, functionSymbol);
-				return;
-			case "WhileStmt":
-				processExpression(statement.condition as AstLike | undefined);
-				processStatement(statement.body as AstLike | undefined, currentFunction, functionSymbol);
-				return;
-			case "ReturnStmt":
-				processExpression(statement.value as AstLike | undefined);
-				return;
-			default:
-				return;
-		}
-	}
-
-	function processAssignTarget(target: AstLike | undefined): void {
-		if (!target || typeof target.kind !== "string") {
-			return;
-		}
-		if (target.kind === "Identifier") {
-			processIdentifierReference(asIdentifier(target), "variable");
-			return;
-		}
-		if (target.kind === "IndexExpr") {
-			processIdentifierReference(asIdentifier(target.array), "variable");
-			processExpression(target.index as AstLike | undefined);
-		}
-	}
-
-	function processExpression(expr: AstLike | undefined): void {
-		if (!expr || typeof expr.kind !== "string") {
-			return;
-		}
-		switch (expr.kind) {
-			case "Identifier":
-				processIdentifierReference(asIdentifier(expr), "variable");
-				return;
-			case "CallExpr": {
-				const callee = asIdentifier(expr.callee);
-				if (!callee) {
-					for (const arg of asArray(expr.args)) {
-						processExpression(arg);
-					}
-					return;
-				}
-				const callRange = rangeFromIdentifier(callee);
-				if (callRange) {
-					upsertTokenFromIdentifier(callee, "function");
-					pushFunctionCall(callee.text, callRange);
-				}
-				for (const arg of asArray(expr.args)) {
-					processExpression(arg);
-				}
-				return;
-			}
-			case "IndexExpr":
-				processIdentifierReference(asIdentifier(expr.array), "variable");
-				processExpression(expr.index as AstLike | undefined);
-				return;
-			case "BinaryExpr":
-				processExpression(expr.left as AstLike | undefined);
-				processExpression(expr.right as AstLike | undefined);
-				return;
-			case "CastExpr":
-				processExpression(expr.value as AstLike | undefined);
-				return;
-			default:
-				return;
-		}
-	}
-
-	function processIdentifierReference(
-		identifier: IdentifierLike | undefined,
-		tokenType: TokenType,
-	): void {
-		const range = rangeFromIdentifier(identifier);
-		if (!identifier || !range) {
-			return;
-		}
-		if (KEYWORDS.has(identifier.text) || TYPE_NAMES.has(identifier.text)) {
-			return;
-		}
-		upsertTokenFromIdentifier(identifier, tokenType);
-		pushReference(identifier.text, range);
-	}
-
-	function upsertTokenFromIdentifier(
-		identifier: IdentifierLike | undefined,
-		type: TokenType,
-	): void {
-		if (!identifier?.loc || identifier.text.length <= 0) {
-			return;
-		}
-		const line = Math.max(0, identifier.loc.line - 1);
-		const start = Math.max(0, identifier.loc.column);
-		upsertToken({ line, start, length: identifier.text.length, type });
-	}
-
-	function rangeFromIdentifier(identifier: IdentifierLike | undefined) {
-		if (!identifier?.loc || identifier.text.length <= 0) {
-			return null;
-		}
-		const line = Math.max(0, identifier.loc.line - 1);
-		const start = Math.max(0, identifier.loc.column);
-		return createRange(line, start, identifier.text.length);
-	}
-};
-
-const asArray = (value: unknown): AstLike[] => {
-	return Array.isArray(value) ? (value as AstLike[]) : [];
-};
-
-const asIdentifier = (value: unknown): IdentifierLike | undefined => {
-	if (!value || typeof value !== "object") {
-		return undefined;
-	}
-	const candidate = value as IdentifierLike;
-	if (candidate.kind !== "Identifier" || typeof candidate.text !== "string") {
-		return undefined;
-	}
-	return candidate;
 };

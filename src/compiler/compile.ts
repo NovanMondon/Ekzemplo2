@@ -3,6 +3,8 @@ import { buildAst, parseProgram } from "../frontend/parser.js";
 import type { ParseProgramResult } from "../frontend/parser.js";
 import { emitLlvmIR } from "../backend/llvm/program.js";
 import { typecheckProgram } from "../middle/typecheck.js";
+import { isCompileDiagnosticError } from "../diagnostics/compileDiagnostic.js";
+import { buildLspIndex, type LspIndexOutput } from "./lspIndex.js";
 
 export type CompileArtifacts = {
 	parser: ParseProgramResult["parser"];
@@ -28,4 +30,30 @@ export const compileToLlvmIr = (
 	const artifacts = compileToAst(sourceText, sourceFilename);
 	const llvmIR = compileAstToLlvmIr(artifacts.ast, sourceFilename);
 	return { ...artifacts, llvmIR };
+};
+
+export const compileToLspIndex = (sourceText: string, sourceName?: string): LspIndexOutput => {
+	const { ast } = compileToAst(sourceText, sourceName);
+	const index = buildLspIndex(ast);
+
+	try {
+		typecheckProgram(ast, sourceName ?? "<input>");
+	} catch (error) {
+		if (!isCompileDiagnosticError(error)) {
+			throw error;
+		}
+
+		const line = Math.max(0, (error.location?.line ?? 1) - 1);
+		const column = Math.max(0, error.location?.column ?? 0);
+		const nearTextLength = error.nearText?.length ?? 0;
+		index.diagnostics.push({
+			severity: "error",
+			message: error.message,
+			line,
+			column,
+			length: Math.max(1, nearTextLength),
+		});
+	}
+
+	return index;
 };

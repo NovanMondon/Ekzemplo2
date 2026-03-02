@@ -60,5 +60,10 @@ export type DocumentIndex = {
 	symbols: SymbolInfo[];
 	definitionsByName: Map<string, SymbolInfo[]>;
 	referencesByName: Map<string, Location[]>;
+	definitionTargetsByRangeKey: Map<string, Location[]>;
+	definitionIdsByRangeKey: Map<string, string[]>;
+	referencesByDefinitionId: Map<string, Location[]>;
+	symbolByDefinitionId: Map<string, SymbolInfo>;
+	locationByDefinitionId: Map<string, Location>;
 	documentSymbols: DocumentSymbol[];
 };
