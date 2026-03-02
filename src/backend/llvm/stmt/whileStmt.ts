@@ -1,5 +1,4 @@
 import type { Statement, TypeNode, WhileStmt } from "../../../frontend/ast.js";
-import { typeError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
 import { lowerExprToLlvm } from "../expr.js";
 import { lowerStatements } from "./lowerStatements.js";
@@ -17,9 +16,6 @@ export const lowerWhileStatement = (
 	code += `  br label %${condLabel}\n`;
 	code += `${condLabel}:\n`;
 	const condition = lowerExprToLlvm(stmt.condition, ctx);
-	if (condition.type.kind !== "BoolType") {
-		throw typeError("while condition must be bool", stmt.condition);
-	}
 	code += condition.code;
 	code += `  br i1 ${condition.value}, label %${bodyLabel}, label %${endLabel}\n`;
 	code += `${bodyLabel}:\n`;

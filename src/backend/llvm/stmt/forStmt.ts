@@ -1,5 +1,4 @@
 import type { ForStmt, Statement, TypeNode } from "../../../frontend/ast.js";
-import { semanticError, typeError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
 import { lowerExprToLlvm } from "../expr.js";
 import { lowerStatements } from "./lowerStatements.js";
@@ -19,9 +18,6 @@ export const lowerForStatement = (
 	let code = "";
 	if (stmt.init) {
 		const loweredInit = lowerSingleStatement(stmt.init, returnType, ctx);
-		if (loweredInit.exit !== "none") {
-			throw semanticError("for initializer must not terminate control flow", stmt.init);
-		}
 		code += loweredInit.code;
 	}
 
@@ -29,9 +25,6 @@ export const lowerForStatement = (
 	code += `${condLabel}:\n`;
 	if (stmt.condition) {
 		const condition = lowerExprToLlvm(stmt.condition, ctx);
-		if (condition.type.kind !== "BoolType") {
-			throw typeError("for condition must be bool", stmt.condition);
-		}
 		code += condition.code;
 		code += `  br i1 ${condition.value}, label %${bodyLabel}, label %${endLabel}\n`;
 	} else {
@@ -50,9 +43,6 @@ export const lowerForStatement = (
 	code += `${updateLabel}:\n`;
 	if (stmt.update) {
 		const loweredUpdate = lowerSingleStatement(stmt.update, returnType, ctx);
-		if (loweredUpdate.exit !== "none") {
-			throw semanticError("for update must not terminate control flow", stmt.update);
-		}
 		code += loweredUpdate.code;
 	}
 	code += `  br label %${condLabel}\n`;

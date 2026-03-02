@@ -1,5 +1,4 @@
 import type { IndexExpr } from "../../../frontend/ast.js";
-import { semanticError, typeError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
 import { resolveVariable } from "../scope.js";
 import { charType, llvmTypeFor, type LowerExprFn, type LoweredExpr } from "./shared.js";
@@ -9,21 +8,9 @@ export const lowerIndexExpr = (
 	ctx: FunctionEmitContext,
 	lowerExpr: LowerExprFn,
 ): LoweredExpr => {
-	const binding = resolveVariable(ctx, expr.array.text);
-	if (!binding) {
-		throw semanticError(
-			`undefined variable: ${expr.array.text} (in ${ctx.sourceFilename})`,
-			expr.array,
-		);
-	}
-	if (binding.type.kind !== "ArrayType" && binding.type.kind !== "StringType") {
-		throw semanticError(`index access requires array variable: ${expr.array.text}`, expr);
-	}
+	const binding = resolveVariable(ctx, expr.array.text)!;
 
 	const loweredIndex = lowerExpr(expr.index, ctx);
-	if (loweredIndex.type.kind !== "IntType") {
-		throw typeError(`array index must be int: ${expr.array.text}`, expr.index);
-	}
 
 	const elementType = binding.type.kind === "ArrayType" ? binding.type.elementType : charType;
 	const arrayType = binding.type.kind === "ArrayType" ? llvmTypeFor(binding.type) : "i8";

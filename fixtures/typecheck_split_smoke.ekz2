@@ -1,0 +1,11 @@
+int id(int x) {
+  return x;
+}
+
+int main() {
+  int n = 3;
+  if (true) {
+    n = id(n + 1);
+  }
+  return n;
+}

@@ -2,6 +2,7 @@ import type { Program } from "../frontend/ast.js";
 import { buildAst, parseProgram } from "../frontend/parser.js";
 import type { ParseProgramResult } from "../frontend/parser.js";
 import { emitLlvmIR } from "../backend/llvm/program.js";
+import { typecheckProgram } from "../middle/typecheck.js";
 
 export type CompileArtifacts = {
 	parser: ParseProgramResult["parser"];
@@ -16,6 +17,7 @@ export const compileToAst = (sourceText: string, sourceName?: string): CompileAr
 };
 
 export const compileAstToLlvmIr = (ast: Program, sourceFilename: string): string => {
+	typecheckProgram(ast, sourceFilename);
 	return emitLlvmIR(ast, { sourceFilename });
 };
 
