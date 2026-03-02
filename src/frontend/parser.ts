@@ -27,6 +27,8 @@ import type {
 	VarDeclStmt,
 	WhileStmt,
 } from "./ast.js";
+import { CompileDiagnosticError } from "../diagnostics/compileDiagnostic.js";
+import type { SourceLocation } from "./sourceLocation.js";
 import { Ekzemplo2Lexer } from "./generated/Ekzemplo2Lexer.js";
 import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
 import type {
@@ -63,6 +65,10 @@ import type {
 import { Ekzemplo2ParserVisitor } from "./generated/Ekzemplo2ParserVisitor.js";
 
 export class ThrowingErrorListener extends antlr.BaseErrorListener {
+	public constructor(private readonly sourceName: string) {
+		super();
+	}
+
 	public override syntaxError(
 		_recognizer: antlr.Recognizer<antlr.ATNSimulator>,
 		offendingSymbol: antlr.Token | null,
@@ -71,8 +77,14 @@ export class ThrowingErrorListener extends antlr.BaseErrorListener {
 		msg: string,
 		_e: antlr.RecognitionException | null,
 	): void {
-		const near = offendingSymbol?.text ? ` near '${offendingSymbol.text}'` : "";
-		throw new SyntaxError(`line ${line}:${charPositionInLine} ${msg}${near}`);
+		throw new CompileDiagnosticError("syntax", msg, {
+			location: {
+				line,
+				column: charPositionInLine,
+				sourceName: this.sourceName,
+			},
+			nearText: offendingSymbol?.text ?? undefined,
+		});
 	}
 }
 
@@ -81,8 +93,8 @@ export type ParseProgramResult = {
 	tree: ProgramContext;
 };
 
-export const parseProgram = (sourceText: string): ParseProgramResult => {
-	const errorListener = new ThrowingErrorListener();
+export const parseProgram = (sourceText: string, sourceName = "<input>"): ParseProgramResult => {
+	const errorListener = new ThrowingErrorListener(sourceName);
 
 	const input = antlr.CharStream.fromString(sourceText);
 	const lexer = new Ekzemplo2Lexer(input);
@@ -94,9 +106,10 @@ export const parseProgram = (sourceText: string): ParseProgramResult => {
 	const errorChars = tokens.getTokens().filter((t) => t.type === Ekzemplo2Lexer.ERROR_CHAR);
 	if (errorChars.length > 0) {
 		const first = errorChars[0]!;
-		throw new SyntaxError(
-			`unexpected character '${first.text ?? ""}' at line ${first.line}:${first.column}`,
-		);
+		throw new CompileDiagnosticError("syntax", `unexpected character '${first.text ?? ""}'`, {
+			location: tokenLocation(first, sourceName),
+			nearText: first.text ?? undefined,
+		});
 	}
 
 	const parser = new Ekzemplo2Parser(tokens);
@@ -107,8 +120,8 @@ export const parseProgram = (sourceText: string): ParseProgramResult => {
 	return { parser, tree };
 };
 
-export const buildAst = (tree: ProgramContext): Program => {
-	const visitor = new AstBuilder();
+export const buildAst = (tree: ProgramContext, sourceName = "<input>"): Program => {
+	const visitor = new AstBuilder(sourceName);
 	const result = tree.accept(visitor);
 	if (!result || result.kind !== "Program") {
 		throw new Error("internal error: failed to build AST Program");
@@ -127,6 +140,10 @@ type AstResult =
 	| TypeNode;
 
 class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
+	public constructor(private readonly sourceName: string) {
+		super();
+	}
+
 	public override visitProgram = (ctx: ProgramContext): Program => {
 		const externs: ExternFunctionDecl[] = [];
 		const functions: FunctionDecl[] = [];
@@ -145,7 +162,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			}
 			throw new Error("internal error: expected FunctionDecl or ExternFunctionDecl");
 		}
-		return { kind: "Program", externs, functions };
+		return withLoc({ kind: "Program", externs, functions }, ctx, this.sourceName);
 	};
 
 	public override visitTopLevelDeclaration = (ctx: TopLevelDeclarationContext): AstResult => {
@@ -196,13 +213,13 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			}
 		}
 
-		return {
+		return withLoc({
 			kind: "ExternFunctionDecl",
-			name: { kind: "Identifier", text: nameText },
+			name: withLoc({ kind: "Identifier", text: nameText }, ctx.IDENT(), this.sourceName),
 			returnType,
 			params,
 			isVariadic,
-		};
+		}, ctx, this.sourceName);
 	};
 
 	private isExternVariadic(ctx: ExternParameterSpecContext | null): boolean {
@@ -236,13 +253,13 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!body || body.kind !== "Block") {
 			throw new Error("internal error: expected Block");
 		}
-		return {
+		return withLoc({
 			kind: "FunctionDecl",
-			name: { kind: "Identifier", text: nameText },
+			name: withLoc({ kind: "Identifier", text: nameText }, ctx.IDENT(), this.sourceName),
 			returnType,
 			params,
 			body,
-		};
+		}, ctx, this.sourceName);
 	};
 
 	public override visitParameter = (ctx: ParameterContext): ParamDecl => {
@@ -253,11 +270,15 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (type.kind === "ArrayType") {
 			throw new Error("array parameter is not supported yet");
 		}
-		return {
+		return withLoc({
 			kind: "ParamDecl",
-			name: { kind: "Identifier", text: ctx.IDENT().getText() },
+			name: withLoc(
+				{ kind: "Identifier", text: ctx.IDENT().getText() },
+				ctx.IDENT(),
+				this.sourceName,
+			),
 			type,
-		};
+		}, ctx, this.sourceName);
 	};
 
 	public override visitBlock = (ctx: BlockContext): Block => {
@@ -269,7 +290,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			}
 			statements.push(stmt);
 		}
-		return { kind: "Block", statements };
+		return withLoc({ kind: "Block", statements }, ctx, this.sourceName);
 	};
 
 	public override visitStatement = (ctx: StatementContext): Statement => {
@@ -371,7 +392,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!value || !isExpr(value)) {
 			throw new Error("internal error: expected Expr");
 		}
-		return { kind: "ExprStmt", value };
+		return withLoc({ kind: "ExprStmt", value }, ctx, this.sourceName);
 	};
 
 	public override visitVariableDeclaration = (ctx: VariableDeclarationContext): VarDeclStmt => {
@@ -386,18 +407,18 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			if (!initializer || !isExpr(initializer)) {
 				throw new Error("internal error: expected Expr");
 			}
-			return {
+			return withLoc({
 				kind: "VarDeclStmt",
-				name: { kind: "Identifier", text: ident },
+				name: withLoc({ kind: "Identifier", text: ident }, ctx.IDENT(), this.sourceName),
 				type,
 				initializer,
-			};
+			}, ctx, this.sourceName);
 		}
-		return {
+		return withLoc({
 			kind: "VarDeclStmt",
-			name: { kind: "Identifier", text: ident },
+			name: withLoc({ kind: "Identifier", text: ident }, ctx.IDENT(), this.sourceName),
 			type,
-		};
+		}, ctx, this.sourceName);
 	};
 
 	public override visitAssignmentStatement = (ctx: AssignmentStatementContext): AssignStmt => {
@@ -409,11 +430,11 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!targetCtx) {
 			throw new Error("internal error: expected assignTarget");
 		}
-		return {
+		return withLoc({
 			kind: "AssignStmt",
 			target: this.buildAssignTarget(targetCtx),
 			value,
-		};
+		}, ctx, this.sourceName);
 	};
 
 	public override visitReturnStatement = (ctx: ReturnStatementContext): ReturnStmt => {
@@ -421,7 +442,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!value || !isExpr(value)) {
 			throw new Error("internal error: expected Expr");
 		}
-		return { kind: "ReturnStmt", value };
+		return withLoc({ kind: "ReturnStmt", value }, ctx, this.sourceName);
 	};
 
 	public override visitIfStatement = (ctx: IfStatementContext): IfStmt => {
@@ -444,10 +465,10 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			if (!elseBranch || !isStatement(elseBranch)) {
 				throw new Error("internal error: expected Statement");
 			}
-			return { kind: "IfStmt", condition, thenBranch, elseBranch };
+			return withLoc({ kind: "IfStmt", condition, thenBranch, elseBranch }, ctx, this.sourceName);
 		}
 
-		return { kind: "IfStmt", condition, thenBranch };
+		return withLoc({ kind: "IfStmt", condition, thenBranch }, ctx, this.sourceName);
 	};
 
 	public override visitForStatement = (ctx: ForStatementContext): ForStmt => {
@@ -472,7 +493,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			throw new Error("internal error: expected Statement");
 		}
 
-		return { kind: "ForStmt", init, condition, update, body };
+		return withLoc({ kind: "ForStmt", init, condition, update, body }, ctx, this.sourceName);
 	};
 
 	public override visitWhileStatement = (ctx: WhileStatementContext): WhileStmt => {
@@ -488,15 +509,15 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!body || !isStatement(body)) {
 			throw new Error("internal error: expected Statement");
 		}
-		return { kind: "WhileStmt", condition, body };
+		return withLoc({ kind: "WhileStmt", condition, body }, ctx, this.sourceName);
 	};
 
-	public override visitBreakStatement = (_ctx: BreakStatementContext): BreakStmt => {
-		return { kind: "BreakStmt" };
+	public override visitBreakStatement = (ctx: BreakStatementContext): BreakStmt => {
+		return withLoc({ kind: "BreakStmt" }, ctx, this.sourceName);
 	};
 
-	public override visitContinueStatement = (_ctx: ContinueStatementContext): ContinueStmt => {
-		return { kind: "ContinueStmt" };
+	public override visitContinueStatement = (ctx: ContinueStatementContext): ContinueStmt => {
+		return withLoc({ kind: "ContinueStmt" }, ctx, this.sourceName);
 	};
 
 	private buildForInit(ctx: ForInitContext | null): ForStmt["init"] {
@@ -519,18 +540,26 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 				if (!initializer || !isExpr(initializer)) {
 					throw new Error("internal error: expected Expr");
 				}
-				return {
+				return withLoc({
 					kind: "VarDeclStmt",
-					name: { kind: "Identifier", text: nameToken.getText() },
+					name: withLoc(
+						{ kind: "Identifier", text: nameToken.getText() },
+						nameToken,
+						this.sourceName,
+					),
 					type,
 					initializer,
-				};
+				}, ctx, this.sourceName);
 			}
-			return {
+			return withLoc({
 				kind: "VarDeclStmt",
-				name: { kind: "Identifier", text: nameToken.getText() },
+				name: withLoc(
+					{ kind: "Identifier", text: nameToken.getText() },
+					nameToken,
+					this.sourceName,
+				),
 				type,
-			};
+			}, ctx, this.sourceName);
 		}
 
 		const targetCtx = ctx.assignTarget();
@@ -543,11 +572,11 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			if (!parsed || !isExpr(parsed)) {
 				throw new Error("internal error: expected Expr");
 			}
-			return {
+			return withLoc({
 				kind: "AssignStmt",
 				target: this.buildAssignTarget(targetCtx),
 				value: parsed,
-			};
+			}, ctx, this.sourceName);
 		}
 
 		const exprCtx = ctx.expr();
@@ -558,7 +587,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!value || !isExpr(value)) {
 			throw new Error("internal error: expected Expr");
 		}
-		return { kind: "ExprStmt", value };
+		return withLoc({ kind: "ExprStmt", value }, ctx, this.sourceName);
 	}
 
 	private buildForUpdate(ctx: ForUpdateContext | null): ForStmt["update"] {
@@ -576,11 +605,11 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			if (!parsed || !isExpr(parsed)) {
 				throw new Error("internal error: expected Expr");
 			}
-			return {
+			return withLoc({
 				kind: "AssignStmt",
 				target: this.buildAssignTarget(targetCtx),
 				value: parsed,
-			};
+			}, ctx, this.sourceName);
 		}
 
 		const exprCtx = ctx.expr();
@@ -591,7 +620,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!value || !isExpr(value)) {
 			throw new Error("internal error: expected Expr");
 		}
-		return { kind: "ExprStmt", value };
+		return withLoc({ kind: "ExprStmt", value }, ctx, this.sourceName);
 	}
 
 	public override visitExpr = (ctx: ExprContext): Expr => {
@@ -604,22 +633,22 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 
 	public override visitEqualityExpr = (ctx: EqualityExprContext): Expr => {
 		const parts = ctx.relationalExpr();
-		return foldBinaryExprs(parts, this, ["==", "!="]);
+		return foldBinaryExprs(parts, this, ["==", "!="], ctx, this.sourceName);
 	};
 
 	public override visitRelationalExpr = (ctx: RelationalExprContext): Expr => {
 		const parts = ctx.additiveExpr();
-		return foldBinaryExprs(parts, this, ["<", "<=", ">", ">="]);
+		return foldBinaryExprs(parts, this, ["<", "<=", ">", ">="], ctx, this.sourceName);
 	};
 
 	public override visitAdditiveExpr = (ctx: AdditiveExprContext): Expr => {
 		const terms = ctx.multiplicativeExpr();
-		return foldBinaryExprs(terms, this, ["+", "-"]);
+		return foldBinaryExprs(terms, this, ["+", "-"], ctx, this.sourceName);
 	};
 
 	public override visitMultiplicativeExpr = (ctx: MultiplicativeExprContext): Expr => {
 		const parts = ctx.castExpr();
-		return foldBinaryExprs(parts, this, ["*", "/"]);
+		return foldBinaryExprs(parts, this, ["*", "/"], ctx, this.sourceName);
 	};
 
 	public override visitCastExpr = (ctx: CastExprContext): Expr => {
@@ -637,7 +666,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			if (!inner || !isExpr(inner)) {
 				throw new Error("internal error: expected Expr");
 			}
-			return { kind: "CastExpr", targetType, value: inner };
+			return withLoc({ kind: "CastExpr", targetType, value: inner }, ctx, this.sourceName);
 		}
 		const primaryCtx = ctx.primaryExpr();
 		if (!primaryCtx) {
@@ -653,33 +682,37 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	public override visitPrimaryExpr = (ctx: PrimaryExprContext): Expr => {
 		const intToken = ctx.INT();
 		if (intToken) {
-			return parseIntLiteral(intToken.getText());
+			return parseIntLiteral(intToken, this.sourceName);
 		}
 		const stringToken = ctx.STRING_LITERAL();
 		if (stringToken) {
-			return parseStringLiteral(stringToken.getText());
+			return parseStringLiteral(stringToken, this.sourceName);
 		}
 		const charToken = ctx.CHAR_LITERAL();
 		if (charToken) {
-			return parseCharLiteral(charToken.getText());
+			return parseCharLiteral(charToken, this.sourceName);
 		}
 		const trueToken = ctx.KW_TRUE();
 		if (trueToken) {
-			return parseBoolLiteral(trueToken.getText());
+			return parseBoolLiteral(trueToken, this.sourceName);
 		}
 		const falseToken = ctx.KW_FALSE();
 		if (falseToken) {
-			return parseBoolLiteral(falseToken.getText());
+			return parseBoolLiteral(falseToken, this.sourceName);
 		}
 		const identToken = ctx.IDENT();
 		if (identToken) {
 			if (ctx.LPAREN() && ctx.RPAREN()) {
 				const argumentList = ctx.argumentList();
-				return {
+				return withLoc({
 					kind: "CallExpr",
-					callee: { kind: "Identifier", text: identToken.getText() },
+					callee: withLoc(
+						{ kind: "Identifier", text: identToken.getText() },
+						identToken,
+						this.sourceName,
+					),
 					args: argumentList ? this.buildArgumentList(argumentList) : [],
-				};
+				}, ctx, this.sourceName);
 			}
 			if (ctx.LBRACK() && ctx.RBRACK()) {
 				const indexCtx = ctx.expr();
@@ -690,13 +723,17 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 				if (!index || !isExpr(index)) {
 					throw new Error("internal error: expected Expr");
 				}
-				return {
+				return withLoc({
 					kind: "IndexExpr",
-					array: { kind: "Identifier", text: identToken.getText() },
+					array: withLoc(
+						{ kind: "Identifier", text: identToken.getText() },
+						identToken,
+						this.sourceName,
+					),
 					index,
-				};
+				}, ctx, this.sourceName);
 			}
-			return { kind: "Identifier", text: identToken.getText() };
+			return withLoc({ kind: "Identifier", text: identToken.getText() }, identToken, this.sourceName);
 		}
 		const inner = ctx.expr();
 		if (inner) {
@@ -728,19 +765,24 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			return scalarType;
 		}
 		if (scalarType.kind === "StringType") {
-			throw new SyntaxError("array element type string is not supported");
+			throw new CompileDiagnosticError("syntax", "array element type string is not supported", {
+				location: contextLocation(ctx, this.sourceName),
+			});
 		}
 		const rawLength = lengthToken.getText();
 		const length = Number.parseInt(rawLength, 10);
 		if (!Number.isInteger(length) || length <= 0) {
-			throw new SyntaxError(`array length must be a positive integer: ${rawLength}`);
+			throw new CompileDiagnosticError("syntax", `array length must be a positive integer: ${rawLength}`, {
+				location: tokenLocation(lengthToken.symbol, this.sourceName),
+				nearText: rawLength,
+			});
 		}
-		return {
+		return withLoc({
 			kind: "ArrayType",
 			elementType: scalarType,
 			length,
 			rawLength,
-		};
+		}, ctx, this.sourceName);
 	};
 
 	private buildAssignTarget(ctx: AssignTargetContext): AssignStmt["target"] {
@@ -748,17 +790,17 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		const name = identToken.getText();
 		const indexCtx = ctx.expr();
 		if (!indexCtx) {
-			return { kind: "Identifier", text: name };
+			return withLoc({ kind: "Identifier", text: name }, identToken, this.sourceName);
 		}
 		const index = indexCtx.accept(this);
 		if (!index || !isExpr(index)) {
 			throw new Error("internal error: expected Expr");
 		}
-		return {
+		return withLoc({
 			kind: "IndexExpr",
-			array: { kind: "Identifier", text: name },
+			array: withLoc({ kind: "Identifier", text: name }, identToken, this.sourceName),
 			index,
-		};
+		}, ctx, this.sourceName);
 	}
 
 	private buildScalarType(ctx: TypeNameContext): IntType | BoolType | StringType | CharType {
@@ -767,16 +809,16 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			throw new Error("internal error: expected scalarType");
 		}
 		if (scalarTypeCtx.KW_INT()) {
-			return { kind: "IntType" };
+			return withLoc({ kind: "IntType" }, scalarTypeCtx, this.sourceName);
 		}
 		if (scalarTypeCtx.KW_BOOL()) {
-			return { kind: "BoolType" };
+			return withLoc({ kind: "BoolType" }, scalarTypeCtx, this.sourceName);
 		}
 		if (scalarTypeCtx.KW_STRING()) {
-			return { kind: "StringType" };
+			return withLoc({ kind: "StringType" }, scalarTypeCtx, this.sourceName);
 		}
 		if (scalarTypeCtx.KW_CHAR()) {
-			return { kind: "CharType" };
+			return withLoc({ kind: "CharType" }, scalarTypeCtx, this.sourceName);
 		}
 		throw new Error("internal error: invalid scalarType");
 	}
@@ -840,60 +882,118 @@ const isStatement = (node: AstResult): node is Statement => {
 	);
 };
 
-const parseIntLiteral = (text: string): IntLiteral => {
+const tokenLocation = (token: antlr.Token, sourceName?: string): SourceLocation => {
+	return {
+		line: token.line,
+		column: token.column,
+		sourceName,
+	};
+};
+
+const contextLocation = (ctx: antlr.ParserRuleContext, sourceName?: string): SourceLocation => {
+	const start = ctx.start;
+	return {
+		line: start?.line ?? 1,
+		column: start?.column ?? 0,
+		sourceName,
+	};
+};
+
+const withLoc = <T>(
+	node: T,
+	source: antlr.ParserRuleContext | antlr.Token | antlr.TerminalNode,
+	sourceName?: string,
+): T => {
+	const base = node as object;
+	if (source instanceof antlr.ParserRuleContext) {
+		return { ...base, loc: contextLocation(source, sourceName) } as T;
+	}
+	if ("symbol" in source) {
+		return { ...base, loc: tokenLocation(source.symbol, sourceName) } as T;
+	}
+	return { ...base, loc: tokenLocation(source, sourceName) } as T;
+};
+
+const parseIntLiteral = (token: antlr.TerminalNode, sourceName: string): IntLiteral => {
+	const text = token.getText();
 	const value = Number.parseInt(text, 10);
 	if (!Number.isFinite(value)) {
-		throw new SyntaxError(`invalid int literal: ${text}`);
+		throw new CompileDiagnosticError("syntax", `invalid int literal: ${text}`, {
+			location: tokenLocation(token.symbol, sourceName),
+			nearText: text,
+		});
 	}
-	return { kind: "IntLiteral", value, raw: text };
+	return withLoc({ kind: "IntLiteral", value, raw: text }, token, sourceName);
 };
 
-const parseBoolLiteral = (text: string): BoolLiteral => {
+const parseBoolLiteral = (token: antlr.TerminalNode, sourceName: string): BoolLiteral => {
+	const text = token.getText();
 	if (text !== "true" && text !== "false") {
-		throw new SyntaxError(`invalid bool literal: ${text}`);
+		throw new CompileDiagnosticError("syntax", `invalid bool literal: ${text}`, {
+			location: tokenLocation(token.symbol, sourceName),
+			nearText: text,
+		});
 	}
-	return { kind: "BoolLiteral", value: text === "true", raw: text };
+	return withLoc({ kind: "BoolLiteral", value: text === "true", raw: text }, token, sourceName);
 };
 
-const parseStringLiteral = (text: string): StringLiteral => {
+const parseStringLiteral = (token: antlr.TerminalNode, sourceName: string): StringLiteral => {
+	const text = token.getText();
 	if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"')) {
-		throw new SyntaxError(`invalid string literal: ${text}`);
+		throw new CompileDiagnosticError("syntax", `invalid string literal: ${text}`, {
+			location: tokenLocation(token.symbol, sourceName),
+			nearText: text,
+		});
 	}
 	const content = text.slice(1, -1);
-	const bytes = decodeEscapedAscii(content, text);
+	const bytes = decodeEscapedAscii(content, text, tokenLocation(token.symbol, sourceName));
 	const value = String.fromCharCode(...bytes);
-	return {
+	return withLoc({
 		kind: "StringLiteral",
 		value,
 		bytes,
 		raw: text,
-	};
+	}, token, sourceName);
 };
 
-const parseCharLiteral = (text: string): CharLiteral => {
+const parseCharLiteral = (token: antlr.TerminalNode, sourceName: string): CharLiteral => {
+	const text = token.getText();
 	if (text.length < 3 || !text.startsWith("'") || !text.endsWith("'")) {
-		throw new SyntaxError(`invalid char literal: ${text}`);
+		throw new CompileDiagnosticError("syntax", `invalid char literal: ${text}`, {
+			location: tokenLocation(token.symbol, sourceName),
+			nearText: text,
+		});
 	}
 	const content = text.slice(1, -1);
-	const bytes = decodeEscapedAscii(content, text);
+	const bytes = decodeEscapedAscii(content, text, tokenLocation(token.symbol, sourceName));
 	if (bytes.length !== 1) {
-		throw new SyntaxError(`char literal must contain exactly one byte: ${text}`);
+		throw new CompileDiagnosticError("syntax", `char literal must contain exactly one byte: ${text}`, {
+			location: tokenLocation(token.symbol, sourceName),
+			nearText: text,
+		});
 	}
-	return {
+	return withLoc({
 		kind: "CharLiteral",
 		value: bytes[0]!,
 		raw: text,
-	};
+	}, token, sourceName);
 };
 
-const decodeEscapedAscii = (content: string, rawLiteral: string): number[] => {
+const decodeEscapedAscii = (
+	content: string,
+	rawLiteral: string,
+	location: SourceLocation,
+): number[] => {
 	const bytes: number[] = [];
 	for (let i = 0; i < content.length; i++) {
 		const ch = content[i]!;
 		if (ch !== "\\") {
 			const code = ch.charCodeAt(0);
 			if (code > 0x7f) {
-				throw new SyntaxError(`non-ascii character is not supported: ${rawLiteral}`);
+				throw new CompileDiagnosticError("syntax", `non-ascii character is not supported: ${rawLiteral}`, {
+					location,
+					nearText: rawLiteral,
+				});
 			}
 			bytes.push(code);
 			continue;
@@ -901,7 +1001,10 @@ const decodeEscapedAscii = (content: string, rawLiteral: string): number[] => {
 
 		i++;
 		if (i >= content.length) {
-			throw new SyntaxError(`incomplete escape sequence: ${rawLiteral}`);
+			throw new CompileDiagnosticError("syntax", `incomplete escape sequence: ${rawLiteral}`, {
+				location,
+				nearText: rawLiteral,
+			});
 		}
 		const esc = content[i]!;
 		const simple = decodeSimpleEscape(esc);
@@ -913,11 +1016,17 @@ const decodeEscapedAscii = (content: string, rawLiteral: string): number[] => {
 		if (esc === "x") {
 			const next = content.slice(i + 1, i + 3);
 			if (!/^[0-9A-Fa-f]{2}$/.test(next)) {
-				throw new SyntaxError(`invalid hex escape sequence: ${rawLiteral}`);
+				throw new CompileDiagnosticError("syntax", `invalid hex escape sequence: ${rawLiteral}`, {
+					location,
+					nearText: rawLiteral,
+				});
 			}
 			const value = Number.parseInt(next, 16);
 			if (value > 0x7f) {
-				throw new SyntaxError(`hex escape is out of ascii range: ${rawLiteral}`);
+				throw new CompileDiagnosticError("syntax", `hex escape is out of ascii range: ${rawLiteral}`, {
+					location,
+					nearText: rawLiteral,
+				});
 			}
 			bytes.push(value);
 			i += 2;
@@ -933,14 +1042,20 @@ const decodeEscapedAscii = (content: string, rawLiteral: string): number[] => {
 			}
 			const value = Number.parseInt(oct, 8);
 			if (value > 0x7f) {
-				throw new SyntaxError(`octal escape is out of ascii range: ${rawLiteral}`);
+				throw new CompileDiagnosticError("syntax", `octal escape is out of ascii range: ${rawLiteral}`, {
+					location,
+					nearText: rawLiteral,
+				});
 			}
 			bytes.push(value);
 			i = j - 1;
 			continue;
 		}
 
-		throw new SyntaxError(`unsupported escape sequence: \\${esc}`);
+		throw new CompileDiagnosticError("syntax", `unsupported escape sequence: \\${esc}`, {
+			location,
+			nearText: rawLiteral,
+		});
 	}
 	return bytes;
 };
@@ -980,6 +1095,8 @@ const foldBinaryExprs = (
 	parts: antlr.ParserRuleContext[],
 	visitor: AstBuilder,
 	validOps: BinaryOp[],
+	ctx: antlr.ParserRuleContext,
+	sourceName: string,
 ): Expr => {
 	if (parts.length === 0) {
 		throw new Error("internal error: expected at least one expression part");
@@ -999,7 +1116,7 @@ const foldBinaryExprs = (
 		if (!right || !isExpr(right)) {
 			throw new Error("internal error: expected Expr");
 		}
-		acc = { kind: "BinaryExpr", op: ops[i - 1]!, left: acc, right };
+		acc = withLoc({ kind: "BinaryExpr", op: ops[i - 1]!, left: acc, right }, ctx, sourceName);
 	}
 
 	return acc;

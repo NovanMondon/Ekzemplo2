@@ -10,7 +10,8 @@ import { compileLlvmIrWithClang } from "../toolchain/clang.js";
 export const runCli = async (argv: string[]): Promise<void> => {
 	const { filePath, options } = parseArgs(argv);
 	const sourceText = await readSourceText(filePath);
-	const { parser, tree, ast } = compileToAst(sourceText);
+	const sourceName = filePath ?? "<stdin>";
+	const { parser, tree, ast } = compileToAst(sourceText, sourceName);
 
 	if (options.dumpAst) {
 		console.log(JSON.stringify(ast, null, 2));

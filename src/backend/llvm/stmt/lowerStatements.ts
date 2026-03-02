@@ -1,4 +1,5 @@
 import type { Statement, TypeNode } from "../../../frontend/ast.js";
+import { semanticError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
 import { lowerAssignStatement } from "./assignStmt.js";
 import { lowerBreakStatement } from "./breakStmt.js";
@@ -27,7 +28,7 @@ export const lowerStatements = (
 
 	for (const stmt of statements) {
 		if (exit !== "none") {
-			throw new Error("statements after terminating statement are not allowed");
+			throw semanticError("statements after terminating statement are not allowed", stmt);
 		}
 
 		if (stmt.kind === "ReturnStmt") {

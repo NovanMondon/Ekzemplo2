@@ -9,9 +9,9 @@ export type CompileArtifacts = {
 	ast: Program;
 };
 
-export const compileToAst = (sourceText: string): CompileArtifacts => {
-	const { parser, tree } = parseProgram(sourceText);
-	const ast = buildAst(tree);
+export const compileToAst = (sourceText: string, sourceName?: string): CompileArtifacts => {
+	const { parser, tree } = parseProgram(sourceText, sourceName);
+	const ast = buildAst(tree, sourceName);
 	return { parser, tree, ast };
 };
 
@@ -23,7 +23,7 @@ export const compileToLlvmIr = (
 	sourceText: string,
 	sourceFilename: string,
 ): CompileArtifacts & { llvmIR: string } => {
-	const artifacts = compileToAst(sourceText);
+	const artifacts = compileToAst(sourceText, sourceFilename);
 	const llvmIR = compileAstToLlvmIr(artifacts.ast, sourceFilename);
 	return { ...artifacts, llvmIR };
 };

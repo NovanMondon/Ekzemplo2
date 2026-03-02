@@ -1,4 +1,5 @@
 import type { VarDeclStmt } from "../../../frontend/ast.js";
+import { semanticError, typeError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
 import { isSameType, llvmTypeFor, lowerExprToLlvm, typeToString } from "../expr.js";
 import { currentScope } from "../scope.js";
@@ -7,7 +8,7 @@ export const lowerVarDeclStatement = (stmt: VarDeclStmt, ctx: FunctionEmitContex
 	const scope = currentScope(ctx);
 	const name = stmt.name.text;
 	if (scope.has(name)) {
-		throw new Error(`duplicate variable declaration: ${name}`);
+		throw semanticError(`duplicate variable declaration: ${name}`, stmt);
 	}
 
 	const pointer = ctx.nextTemp();
@@ -17,7 +18,7 @@ export const lowerVarDeclStatement = (stmt: VarDeclStmt, ctx: FunctionEmitContex
 	let code = `  ${pointer} = alloca ${llvmType}\n`;
 	if (stmt.type.kind === "ArrayType") {
 		if (stmt.initializer) {
-			throw new Error("array initializer is not supported yet");
+			throw semanticError("array initializer is not supported yet", stmt.initializer);
 		}
 		code += `  store ${llvmType} zeroinitializer, ${llvmType}* ${pointer}\n`;
 		return code;
@@ -26,8 +27,9 @@ export const lowerVarDeclStatement = (stmt: VarDeclStmt, ctx: FunctionEmitContex
 	if (stmt.initializer) {
 		const lowered = lowerExprToLlvm(stmt.initializer, ctx);
 		if (!isSameType(lowered.type, stmt.type)) {
-			throw new Error(
+			throw typeError(
 				`variable initializer type mismatch: expected ${typeToString(stmt.type)}, got ${typeToString(lowered.type)}`,
+				stmt.initializer,
 			);
 		}
 		code += lowered.code;

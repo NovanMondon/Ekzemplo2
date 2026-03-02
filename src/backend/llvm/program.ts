@@ -1,4 +1,5 @@
 import type { Program } from "../../frontend/ast.js";
+import { semanticError } from "../../diagnostics/compileDiagnostic.js";
 import type { EmitContext, FunctionSignature, ModuleEmitContext } from "./env.js";
 import { lowerMinimalFunction } from "./function.js";
 import { escapeLlvmIdentifier, escapeLlvmString } from "./escape.js";
@@ -6,14 +7,14 @@ import { llvmTypeFor } from "./expr.js";
 
 export const emitLlvmIR = (program: Program, ctx: EmitContext): string => {
 	if (program.functions.length === 0) {
-		throw new Error("no function definitions");
+		throw semanticError("no function definitions", program);
 	}
 
 	const functions = new Map<string, FunctionSignature>();
 	const declareLines: string[] = [];
 	for (const externFn of program.externs) {
 		if (functions.has(externFn.name.text)) {
-			throw new Error(`duplicate function name: ${externFn.name.text}`);
+			throw semanticError(`duplicate function name: ${externFn.name.text}`, externFn);
 		}
 		functions.set(externFn.name.text, {
 			returnType: externFn.returnType,
@@ -33,7 +34,7 @@ export const emitLlvmIR = (program: Program, ctx: EmitContext): string => {
 	}
 	for (const fn of program.functions) {
 		if (functions.has(fn.name.text)) {
-			throw new Error(`duplicate function name: ${fn.name.text}`);
+			throw semanticError(`duplicate function name: ${fn.name.text}`, fn);
 		}
 		functions.set(fn.name.text, {
 			returnType: fn.returnType,

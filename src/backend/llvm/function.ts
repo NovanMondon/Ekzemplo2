@@ -1,4 +1,5 @@
 import type { FunctionDecl } from "../../frontend/ast.js";
+import { semanticError } from "../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext, ModuleEmitContext } from "./env.js";
 import { escapeLlvmIdentifier } from "./escape.js";
 import { llvmTypeFor } from "./expr.js";
@@ -10,7 +11,7 @@ export const lowerMinimalFunction = (
 	ctx: ModuleEmitContext,
 ): { functionName: string; llvmIr: string } => {
 	if (fn.returnType.kind === "ArrayType") {
-		throw new Error(`array return type is not supported: ${fn.name.text}`);
+		throw semanticError(`array return type is not supported: ${fn.name.text}`, fn);
 	}
 
 	let tempCounter = 0;
@@ -31,7 +32,7 @@ export const lowerMinimalFunction = (
 	for (let i = 0; i < fn.params.length; i++) {
 		const param = fn.params[i]!;
 		if (param.type.kind === "ArrayType") {
-			throw new Error(`array parameter is not supported: ${param.name.text}`);
+			throw semanticError(`array parameter is not supported: ${param.name.text}`, param);
 		}
 		const llvmType = llvmTypeFor(param.type);
 		const incoming = `%arg${i}`;
@@ -39,7 +40,7 @@ export const lowerMinimalFunction = (
 
 		const scope = currentScope(fnCtx);
 		if (scope.has(param.name.text)) {
-			throw new Error(`duplicate parameter name: ${param.name.text}`);
+			throw semanticError(`duplicate parameter name: ${param.name.text}`, param);
 		}
 		const pointer = fnCtx.nextTemp();
 		scope.set(param.name.text, { type: param.type, pointer });
@@ -49,7 +50,7 @@ export const lowerMinimalFunction = (
 
 	const loweredBody = lowerStatements(fn.body.statements, fn.returnType, fnCtx);
 	if (loweredBody.exit !== "return") {
-		throw new Error("expected return statement");
+		throw semanticError("expected return statement", fn);
 	}
 	const body = prologue + loweredBody.code;
 

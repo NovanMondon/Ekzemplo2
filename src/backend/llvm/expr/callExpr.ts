@@ -1,4 +1,5 @@
 import type { CallExpr } from "../../../frontend/ast.js";
+import { semanticError, typeError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
 import { escapeLlvmIdentifier } from "../escape.js";
 import {
@@ -16,7 +17,7 @@ export const lowerCallExpr = (
 ): LoweredExpr => {
 	const signature = ctx.functions.get(expr.callee.text);
 	if (!signature) {
-		throw new Error(`undefined function: ${expr.callee.text}`);
+		throw semanticError(`undefined function: ${expr.callee.text}`, expr.callee);
 	}
 	const fixedParamCount = signature.params.length;
 	if (
@@ -24,8 +25,9 @@ export const lowerCallExpr = (
 		(signature.isVariadic && expr.args.length < fixedParamCount)
 	) {
 		const expected = signature.isVariadic ? `at least ${fixedParamCount}` : String(fixedParamCount);
-		throw new Error(
+		throw semanticError(
 			`argument count mismatch for ${expr.callee.text}: expected ${expected}, got ${expr.args.length}`,
+			expr,
 		);
 	}
 
@@ -36,8 +38,9 @@ export const lowerCallExpr = (
 		const expectedType = signature.params[i];
 		if (expectedType) {
 			if (!isSameType(lowered.type, expectedType)) {
-				throw new Error(
+				throw typeError(
 					`argument type mismatch for ${expr.callee.text} at ${i + 1}: expected ${typeToString(expectedType)}, got ${typeToString(lowered.type)}`,
+					expr.args[i],
 				);
 			}
 		}

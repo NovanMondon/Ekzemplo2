@@ -1,0 +1,5 @@
+int main() {
+  bool flag = true;
+  int x = flag;
+  return x;
+}

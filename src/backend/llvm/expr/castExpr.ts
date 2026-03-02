@@ -1,4 +1,5 @@
 import type { CastExpr } from "../../../frontend/ast.js";
+import { semanticError, typeError } from "../../../diagnostics/compileDiagnostic.js";
 import type { FunctionEmitContext } from "../env.js";
 import {
 	boolType,
@@ -15,17 +16,17 @@ export const lowerCastExpr = (
 	lowerExpr: LowerExprFn,
 ): LoweredExpr => {
 	if (expr.targetType.kind === "ArrayType") {
-		throw new Error("cast to array type is not supported");
+		throw semanticError("cast to array type is not supported", expr);
 	}
 	if (expr.targetType.kind === "StringType" || expr.targetType.kind === "CharType") {
-		throw new Error("cast to string/char type is not supported");
+		throw semanticError("cast to string/char type is not supported", expr);
 	}
 	const inner = lowerExpr(expr.value, ctx);
 	if (inner.type.kind === "ArrayType") {
-		throw new Error("cast from array type is not supported");
+		throw semanticError("cast from array type is not supported", expr.value);
 	}
 	if (inner.type.kind === "StringType" || inner.type.kind === "CharType") {
-		throw new Error("cast from string/char type is not supported");
+		throw semanticError("cast from string/char type is not supported", expr.value);
 	}
 	if (isSameType(inner.type, expr.targetType)) {
 		return { code: inner.code, value: inner.value, type: expr.targetType };
@@ -46,7 +47,8 @@ export const lowerCastExpr = (
 			type: boolType,
 		};
 	}
-	throw new Error(
+	throw typeError(
 		`unsupported cast from ${typeToString(inner.type)} to ${typeToString(expr.targetType)}`,
+		expr,
 	);
 };
