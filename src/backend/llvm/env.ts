@@ -7,10 +7,14 @@ export type EmitContext = {
 export type FunctionSignature = {
 	returnType: TypeNode;
 	params: TypeNode[];
+	isVariadic: boolean;
 };
 
 export type ModuleEmitContext = EmitContext & {
 	functions: Map<string, FunctionSignature>;
+	stringLiteralPool: Map<string, { globalName: string; llvmType: string }>;
+	globalDefinitions: string[];
+	nextStringLiteralGlobal: () => string;
 };
 
 export type VariableBinding = {

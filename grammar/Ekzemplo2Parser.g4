@@ -5,11 +5,25 @@ options {
 }
 
 program
-  : functionDefinition+ EOF
+  : topLevelDeclaration+ EOF
+  ;
+
+topLevelDeclaration
+  : functionDefinition
+  | externFunctionDeclaration
   ;
 
 functionDefinition
   : typeName IDENT LPAREN parameterList? RPAREN block
+  ;
+
+externFunctionDeclaration
+  : typeName IDENT LPAREN externParameterSpec? RPAREN SEMI
+  ;
+
+externParameterSpec
+  : parameterList (COMMA ELLIPSIS)?
+  | ELLIPSIS
   ;
 
 parameterList
@@ -27,6 +41,8 @@ typeName
 scalarType
   : KW_INT
   | KW_BOOL
+  | KW_STRING
+  | KW_CHAR
   ;
 
 block
@@ -125,6 +141,8 @@ castExpr
 
 primaryExpr
   : INT
+  | STRING_LITERAL
+  | CHAR_LITERAL
   | KW_TRUE
   | KW_FALSE
   | IDENT LPAREN argumentList? RPAREN

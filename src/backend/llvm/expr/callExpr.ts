@@ -18,9 +18,14 @@ export const lowerCallExpr = (
 	if (!signature) {
 		throw new Error(`undefined function: ${expr.callee.text}`);
 	}
-	if (signature.params.length !== expr.args.length) {
+	const fixedParamCount = signature.params.length;
+	if (
+		(!signature.isVariadic && fixedParamCount !== expr.args.length) ||
+		(signature.isVariadic && expr.args.length < fixedParamCount)
+	) {
+		const expected = signature.isVariadic ? `at least ${fixedParamCount}` : String(fixedParamCount);
 		throw new Error(
-			`argument count mismatch for ${expr.callee.text}: expected ${signature.params.length}, got ${expr.args.length}`,
+			`argument count mismatch for ${expr.callee.text}: expected ${expected}, got ${expr.args.length}`,
 		);
 	}
 
@@ -28,20 +33,29 @@ export const lowerCallExpr = (
 	const loweredArgs: string[] = [];
 	for (let i = 0; i < expr.args.length; i++) {
 		const lowered = lowerExpr(expr.args[i]!, ctx);
-		const expectedType = signature.params[i]!;
-		if (!isSameType(lowered.type, expectedType)) {
-			throw new Error(
-				`argument type mismatch for ${expr.callee.text} at ${i + 1}: expected ${typeToString(expectedType)}, got ${typeToString(lowered.type)}`,
-			);
+		const expectedType = signature.params[i];
+		if (expectedType) {
+			if (!isSameType(lowered.type, expectedType)) {
+				throw new Error(
+					`argument type mismatch for ${expr.callee.text} at ${i + 1}: expected ${typeToString(expectedType)}, got ${typeToString(lowered.type)}`,
+				);
+			}
 		}
 		code += lowered.code;
-		const llvmType = llvmTypeFor(expectedType);
+		const llvmType = llvmTypeFor(expectedType ?? lowered.type);
 		loweredArgs.push(`${llvmType} ${lowered.value}`);
 	}
 
 	const tmp = ctx.nextTemp();
 	const returnLlvmType = llvmTypeFor(signature.returnType);
-	code += `  ${tmp} = call ${returnLlvmType} @${escapeLlvmIdentifier(expr.callee.text)}(${loweredArgs.join(", ")})\n`;
+	if (signature.isVariadic) {
+		const fixedParamTypes = signature.params.map((p) => llvmTypeFor(p));
+		const calleeType =
+			fixedParamTypes.length > 0 ? `(${fixedParamTypes.join(", ")}, ...)` : `(...)`;
+		code += `  ${tmp} = call ${returnLlvmType} ${calleeType} @${escapeLlvmIdentifier(expr.callee.text)}(${loweredArgs.join(", ")})\n`;
+	} else {
+		code += `  ${tmp} = call ${returnLlvmType} @${escapeLlvmIdentifier(expr.callee.text)}(${loweredArgs.join(", ")})\n`;
+	}
 	return {
 		code,
 		value: tmp,

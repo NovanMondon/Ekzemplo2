@@ -1,0 +1,6 @@
+int printf(string fmt, ...);
+
+int main() {
+  printf("value=%d\n", 42);
+  return 0;
+}

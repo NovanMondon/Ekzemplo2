@@ -35,6 +35,7 @@ export const lowerVarDeclStatement = (stmt: VarDeclStmt, ctx: FunctionEmitContex
 		return code;
 	}
 
-	code += `  store ${llvmType} 0, ${llvmType}* ${pointer}\n`;
+	const defaultValue = stmt.type.kind === "StringType" ? "null" : "0";
+	code += `  store ${llvmType} ${defaultValue}, ${llvmType}* ${pointer}\n`;
 	return code;
 };

@@ -1,0 +1,5 @@
+int abs(int x);
+
+int main() {
+  return abs(0 - 7);
+}

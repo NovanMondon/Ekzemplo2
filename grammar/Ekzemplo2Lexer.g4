@@ -7,6 +7,8 @@ BLOCK_COMMENT: '/*' .*? '*/' -> skip;
 
 KW_INT: 'int';
 KW_BOOL: 'bool';
+KW_STRING: 'string';
+KW_CHAR: 'char';
 KW_IF: 'if';
 KW_ELSE: 'else';
 KW_FOR: 'for';
@@ -35,11 +37,14 @@ RPAREN: ')';
 LBRACK: '[';
 RBRACK: ']';
 COMMA: ',';
+ELLIPSIS: '...';
 LBRACE: '{';
 RBRACE: '}';
 SEMI: ';';
 
 IDENT: [a-zA-Z_] [a-zA-Z0-9_]*;
 INT: [0-9]+;
+STRING_LITERAL: '"' ( '\\' . | ~["\\\r\n] )* '"';
+CHAR_LITERAL: '\'' ( '\\' . | ~['\\\r\n] ) '\'';
 
 ERROR_CHAR: .;

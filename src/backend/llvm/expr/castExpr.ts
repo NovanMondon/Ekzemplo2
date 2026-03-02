@@ -17,9 +17,15 @@ export const lowerCastExpr = (
 	if (expr.targetType.kind === "ArrayType") {
 		throw new Error("cast to array type is not supported");
 	}
+	if (expr.targetType.kind === "StringType" || expr.targetType.kind === "CharType") {
+		throw new Error("cast to string/char type is not supported");
+	}
 	const inner = lowerExpr(expr.value, ctx);
 	if (inner.type.kind === "ArrayType") {
 		throw new Error("cast from array type is not supported");
+	}
+	if (inner.type.kind === "StringType" || inner.type.kind === "CharType") {
+		throw new Error("cast from string/char type is not supported");
 	}
 	if (isSameType(inner.type, expr.targetType)) {
 		return { code: inner.code, value: inner.value, type: expr.targetType };

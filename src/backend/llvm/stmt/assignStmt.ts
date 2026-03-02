@@ -28,6 +28,9 @@ export const lowerAssignStatement = (stmt: AssignStmt, ctx: FunctionEmitContext)
 	if (!binding) {
 		throw new Error(`undefined variable: ${stmt.target.array.text}`);
 	}
+	if (binding.type.kind === "StringType") {
+		throw new Error(`index assignment is not supported for string: ${stmt.target.array.text}`);
+	}
 	if (binding.type.kind !== "ArrayType") {
 		throw new Error(`index assignment requires array variable: ${stmt.target.array.text}`);
 	}

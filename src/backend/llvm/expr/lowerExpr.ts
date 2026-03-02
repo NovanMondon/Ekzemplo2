@@ -5,13 +5,22 @@ import { lowerCallExpr } from "./callExpr.js";
 import { lowerCastExpr } from "./castExpr.js";
 import { lowerIdentifierExpr } from "./identifierExpr.js";
 import { lowerIndexExpr } from "./indexExpr.js";
-import { lowerBoolLiteralExpr, lowerIntLiteralExpr } from "./literalExpr.js";
+import {
+	lowerBoolLiteralExpr,
+	lowerCharLiteralExpr,
+	lowerIntLiteralExpr,
+	lowerStringLiteralExpr,
+} from "./literalExpr.js";
 import type { LoweredExpr } from "./shared.js";
 
 export const lowerExprToLlvm = (expr: Expr, ctx: FunctionEmitContext): LoweredExpr => {
 	switch (expr.kind) {
 		case "IntLiteral":
 			return lowerIntLiteralExpr(expr);
+		case "StringLiteral":
+			return lowerStringLiteralExpr(expr, ctx);
+		case "CharLiteral":
+			return lowerCharLiteralExpr(expr);
 		case "BoolLiteral":
 			return lowerBoolLiteralExpr(expr);
 		case "CastExpr":

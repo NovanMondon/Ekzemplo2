@@ -1,4 +1,4 @@
-import type { BoolType, Expr, IntType, TypeNode } from "../../../frontend/ast.js";
+import type { BoolType, CharType, Expr, IntType, StringType, TypeNode } from "../../../frontend/ast.js";
 import type { FunctionEmitContext } from "../env.js";
 
 export type LoweredExpr = {
@@ -11,9 +11,20 @@ export type LowerExprFn = (expr: Expr, ctx: FunctionEmitContext) => LoweredExpr;
 
 export const intType: IntType = { kind: "IntType" };
 export const boolType: BoolType = { kind: "BoolType" };
+export const charType: CharType = { kind: "CharType" };
+export const stringType: StringType = { kind: "StringType" };
 
-const llvmScalarTypeFor = (type: IntType | BoolType): "i32" | "i1" => {
-	return type.kind === "IntType" ? "i32" : "i1";
+const llvmScalarTypeFor = (type: IntType | BoolType | CharType | StringType): "i32" | "i1" | "i8" | "i8*" => {
+	if (type.kind === "IntType") {
+		return "i32";
+	}
+	if (type.kind === "BoolType") {
+		return "i1";
+	}
+	if (type.kind === "CharType") {
+		return "i8";
+	}
+	return "i8*";
 };
 
 export const llvmTypeFor = (type: TypeNode): string => {
@@ -40,5 +51,17 @@ export const typeToString = (type: TypeNode): string => {
 	if (type.kind === "BoolType") {
 		return "bool";
 	}
-	return `${type.elementType.kind === "IntType" ? "int" : "bool"}[${type.rawLength}]`;
+	if (type.kind === "StringType") {
+		return "string";
+	}
+	if (type.kind === "CharType") {
+		return "char";
+	}
+	const elementType =
+		type.elementType.kind === "IntType"
+			? "int"
+			: type.elementType.kind === "BoolType"
+				? "bool"
+				: "char";
+	return `${elementType}[${type.rawLength}]`;
 };

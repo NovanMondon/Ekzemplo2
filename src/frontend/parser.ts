@@ -6,9 +6,12 @@ import type {
 	BoolLiteral,
 	BoolType,
 	BreakStmt,
+	CharLiteral,
+	CharType,
 	ContinueStmt,
 	Expr,
 	ExprStmt,
+	ExternFunctionDecl,
 	ForStmt,
 	FunctionDecl,
 	IfStmt,
@@ -17,6 +20,8 @@ import type {
 	ParamDecl,
 	Program,
 	ReturnStmt,
+	StringLiteral,
+	StringType,
 	Statement,
 	TypeNode,
 	VarDeclStmt,
@@ -36,6 +41,8 @@ import type {
 	EqualityExprContext,
 	ExpressionStatementContext,
 	ExprContext,
+	ExternParameterSpecContext,
+	ExternFunctionDeclarationContext,
 	ForInitContext,
 	ForStatementContext,
 	ForUpdateContext,
@@ -48,6 +55,7 @@ import type {
 	RelationalExprContext,
 	ReturnStatementContext,
 	StatementContext,
+	TopLevelDeclarationContext,
 	TypeNameContext,
 	VariableDeclarationContext,
 	WhileStatementContext,
@@ -108,21 +116,101 @@ export const buildAst = (tree: ProgramContext): Program => {
 	return result;
 };
 
-type AstResult = Program | FunctionDecl | ParamDecl | Block | Statement | Expr | TypeNode;
+type AstResult =
+	| Program
+	| ExternFunctionDecl
+	| FunctionDecl
+	| ParamDecl
+	| Block
+	| Statement
+	| Expr
+	| TypeNode;
 
 class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	public override visitProgram = (ctx: ProgramContext): Program => {
-		const fnsCtx = ctx.functionDefinition();
+		const externs: ExternFunctionDecl[] = [];
 		const functions: FunctionDecl[] = [];
-		for (const fnCtx of fnsCtx) {
-			const fn = fnCtx.accept(this);
-			if (!fn || fn.kind !== "FunctionDecl") {
+		for (const topLevelDecl of ctx.topLevelDeclaration()) {
+			const decl = topLevelDecl.accept(this);
+			if (!decl) {
+				throw new Error("internal error: expected top-level declaration");
+			}
+			if (decl.kind === "ExternFunctionDecl") {
+				externs.push(decl);
+				continue;
+			}
+			if (decl.kind === "FunctionDecl") {
+				functions.push(decl);
+				continue;
+			}
+			throw new Error("internal error: expected FunctionDecl or ExternFunctionDecl");
+		}
+		return { kind: "Program", externs, functions };
+	};
+
+	public override visitTopLevelDeclaration = (ctx: TopLevelDeclarationContext): AstResult => {
+		const externDecl = ctx.externFunctionDeclaration();
+		if (externDecl) {
+			const result = externDecl.accept(this);
+			if (!result || result.kind !== "ExternFunctionDecl") {
+				throw new Error("internal error: expected ExternFunctionDecl");
+			}
+			return result;
+		}
+
+		const fnDecl = ctx.functionDefinition();
+		if (fnDecl) {
+			const result = fnDecl.accept(this);
+			if (!result || result.kind !== "FunctionDecl") {
 				throw new Error("internal error: expected FunctionDecl");
 			}
-			functions.push(fn);
+			return result;
 		}
-		return { kind: "Program", functions };
+
+		throw new Error("internal error: invalid top-level declaration");
 	};
+
+	public override visitExternFunctionDeclaration = (
+		ctx: ExternFunctionDeclarationContext,
+	): ExternFunctionDecl => {
+		const nameText = ctx.IDENT().getText();
+		const returnType = ctx.typeName().accept(this);
+		if (!returnType || !isTypeNode(returnType)) {
+			throw new Error("internal error: expected type name");
+		}
+		if (returnType.kind === "ArrayType") {
+			throw new Error("array return type is not supported yet");
+		}
+
+		const params: ParamDecl[] = [];
+		const externParameterSpec = ctx.externParameterSpec();
+		const isVariadic = this.isExternVariadic(externParameterSpec);
+		const parameterList = externParameterSpec?.parameterList();
+		if (parameterList) {
+			for (const paramCtx of parameterList.parameter()) {
+				const param = paramCtx.accept(this);
+				if (!param || param.kind !== "ParamDecl") {
+					throw new Error("internal error: expected ParamDecl");
+				}
+				params.push(param);
+			}
+		}
+
+		return {
+			kind: "ExternFunctionDecl",
+			name: { kind: "Identifier", text: nameText },
+			returnType,
+			params,
+			isVariadic,
+		};
+	};
+
+	private isExternVariadic(ctx: ExternParameterSpecContext | null): boolean {
+		if (!ctx) {
+			return false;
+		}
+		return ctx.ELLIPSIS() !== null;
+	}
 
 	public override visitFunctionDefinition = (ctx: FunctionDefinitionContext): FunctionDecl => {
 		const nameText = ctx.IDENT().getText();
@@ -567,6 +655,14 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (intToken) {
 			return parseIntLiteral(intToken.getText());
 		}
+		const stringToken = ctx.STRING_LITERAL();
+		if (stringToken) {
+			return parseStringLiteral(stringToken.getText());
+		}
+		const charToken = ctx.CHAR_LITERAL();
+		if (charToken) {
+			return parseCharLiteral(charToken.getText());
+		}
 		const trueToken = ctx.KW_TRUE();
 		if (trueToken) {
 			return parseBoolLiteral(trueToken.getText());
@@ -631,6 +727,9 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!lengthToken) {
 			return scalarType;
 		}
+		if (scalarType.kind === "StringType") {
+			throw new SyntaxError("array element type string is not supported");
+		}
 		const rawLength = lengthToken.getText();
 		const length = Number.parseInt(rawLength, 10);
 		if (!Number.isInteger(length) || length <= 0) {
@@ -662,7 +761,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		};
 	}
 
-	private buildScalarType(ctx: TypeNameContext): IntType | BoolType {
+	private buildScalarType(ctx: TypeNameContext): IntType | BoolType | StringType | CharType {
 		const scalarTypeCtx = ctx.scalarType();
 		if (!scalarTypeCtx) {
 			throw new Error("internal error: expected scalarType");
@@ -672,6 +771,12 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		}
 		if (scalarTypeCtx.KW_BOOL()) {
 			return { kind: "BoolType" };
+		}
+		if (scalarTypeCtx.KW_STRING()) {
+			return { kind: "StringType" };
+		}
+		if (scalarTypeCtx.KW_CHAR()) {
+			return { kind: "CharType" };
 		}
 		throw new Error("internal error: invalid scalarType");
 	}
@@ -699,6 +804,8 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 const isExpr = (node: AstResult): node is Expr => {
 	return (
 		node.kind === "IntLiteral" ||
+		node.kind === "StringLiteral" ||
+		node.kind === "CharLiteral" ||
 		node.kind === "BoolLiteral" ||
 		node.kind === "Identifier" ||
 		node.kind === "BinaryExpr" ||
@@ -709,7 +816,13 @@ const isExpr = (node: AstResult): node is Expr => {
 };
 
 const isTypeNode = (node: AstResult): node is TypeNode => {
-	return node.kind === "IntType" || node.kind === "BoolType" || node.kind === "ArrayType";
+	return (
+		node.kind === "IntType" ||
+		node.kind === "BoolType" ||
+		node.kind === "StringType" ||
+		node.kind === "CharType" ||
+		node.kind === "ArrayType"
+	);
 };
 
 const isStatement = (node: AstResult): node is Statement => {
@@ -740,6 +853,125 @@ const parseBoolLiteral = (text: string): BoolLiteral => {
 		throw new SyntaxError(`invalid bool literal: ${text}`);
 	}
 	return { kind: "BoolLiteral", value: text === "true", raw: text };
+};
+
+const parseStringLiteral = (text: string): StringLiteral => {
+	if (text.length < 2 || !text.startsWith('"') || !text.endsWith('"')) {
+		throw new SyntaxError(`invalid string literal: ${text}`);
+	}
+	const content = text.slice(1, -1);
+	const bytes = decodeEscapedAscii(content, text);
+	const value = String.fromCharCode(...bytes);
+	return {
+		kind: "StringLiteral",
+		value,
+		bytes,
+		raw: text,
+	};
+};
+
+const parseCharLiteral = (text: string): CharLiteral => {
+	if (text.length < 3 || !text.startsWith("'") || !text.endsWith("'")) {
+		throw new SyntaxError(`invalid char literal: ${text}`);
+	}
+	const content = text.slice(1, -1);
+	const bytes = decodeEscapedAscii(content, text);
+	if (bytes.length !== 1) {
+		throw new SyntaxError(`char literal must contain exactly one byte: ${text}`);
+	}
+	return {
+		kind: "CharLiteral",
+		value: bytes[0]!,
+		raw: text,
+	};
+};
+
+const decodeEscapedAscii = (content: string, rawLiteral: string): number[] => {
+	const bytes: number[] = [];
+	for (let i = 0; i < content.length; i++) {
+		const ch = content[i]!;
+		if (ch !== "\\") {
+			const code = ch.charCodeAt(0);
+			if (code > 0x7f) {
+				throw new SyntaxError(`non-ascii character is not supported: ${rawLiteral}`);
+			}
+			bytes.push(code);
+			continue;
+		}
+
+		i++;
+		if (i >= content.length) {
+			throw new SyntaxError(`incomplete escape sequence: ${rawLiteral}`);
+		}
+		const esc = content[i]!;
+		const simple = decodeSimpleEscape(esc);
+		if (simple !== null) {
+			bytes.push(simple);
+			continue;
+		}
+
+		if (esc === "x") {
+			const next = content.slice(i + 1, i + 3);
+			if (!/^[0-9A-Fa-f]{2}$/.test(next)) {
+				throw new SyntaxError(`invalid hex escape sequence: ${rawLiteral}`);
+			}
+			const value = Number.parseInt(next, 16);
+			if (value > 0x7f) {
+				throw new SyntaxError(`hex escape is out of ascii range: ${rawLiteral}`);
+			}
+			bytes.push(value);
+			i += 2;
+			continue;
+		}
+
+		if (/[0-7]/.test(esc)) {
+			let oct = esc;
+			let j = i + 1;
+			while (j < content.length && oct.length < 3 && /[0-7]/.test(content[j]!)) {
+				oct += content[j]!;
+				j++;
+			}
+			const value = Number.parseInt(oct, 8);
+			if (value > 0x7f) {
+				throw new SyntaxError(`octal escape is out of ascii range: ${rawLiteral}`);
+			}
+			bytes.push(value);
+			i = j - 1;
+			continue;
+		}
+
+		throw new SyntaxError(`unsupported escape sequence: \\${esc}`);
+	}
+	return bytes;
+};
+
+const decodeSimpleEscape = (esc: string): number | null => {
+	switch (esc) {
+		case "a":
+			return 0x07;
+		case "b":
+			return 0x08;
+		case "f":
+			return 0x0c;
+		case "n":
+			return 0x0a;
+		case "r":
+			return 0x0d;
+		case "t":
+			return 0x09;
+		case "v":
+			return 0x0b;
+		case "\\":
+			return 0x5c;
+		case "'":
+			return 0x27;
+		case '"':
+			return 0x22;
+		case "?":
+			return 0x3f;
+		default:
+			return null;
+	}
 };
 
 type BinaryOp = "+" | "-" | "*" | "/" | "==" | "!=" | "<" | "<=" | ">" | ">=";

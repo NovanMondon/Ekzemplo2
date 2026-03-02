@@ -19,6 +19,14 @@ export const lowerBinaryExpr = (
 	if (left.type.kind === "ArrayType" || right.type.kind === "ArrayType") {
 		throw new Error(`binary op ${expr.op} does not support array operands`);
 	}
+	if (
+		left.type.kind === "StringType" ||
+		right.type.kind === "StringType" ||
+		left.type.kind === "CharType" ||
+		right.type.kind === "CharType"
+	) {
+		throw new Error(`binary op ${expr.op} does not support string/char operands`);
+	}
 	const tmp = ctx.nextTemp();
 	const op = expr.op;
 	if (op === "+" || op === "-" || op === "*" || op === "/") {
