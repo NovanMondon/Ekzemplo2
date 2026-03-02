@@ -1,0 +1,7 @@
+int main() {
+  int[4] xs;
+  xs[0] = 7;
+  xs[1] = 5;
+  int i = 1;
+  return xs[i] + xs[0];
+}

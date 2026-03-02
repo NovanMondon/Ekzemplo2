@@ -9,6 +9,10 @@ export const lowerMinimalFunction = (
 	fn: FunctionDecl,
 	ctx: ModuleEmitContext,
 ): { functionName: string; llvmIr: string } => {
+	if (fn.returnType.kind === "ArrayType") {
+		throw new Error(`array return type is not supported: ${fn.name.text}`);
+	}
+
 	let tempCounter = 0;
 	let labelCounter = 0;
 	const nextTemp = () => `%t${tempCounter++}`;
@@ -26,6 +30,9 @@ export const lowerMinimalFunction = (
 	const paramDefs: string[] = [];
 	for (let i = 0; i < fn.params.length; i++) {
 		const param = fn.params[i]!;
+		if (param.type.kind === "ArrayType") {
+			throw new Error(`array parameter is not supported: ${param.name.text}`);
+		}
 		const llvmType = llvmTypeFor(param.type);
 		const incoming = `%arg${i}`;
 		paramDefs.push(`${llvmType} ${incoming}`);

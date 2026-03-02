@@ -4,6 +4,7 @@ import type {
 	AssignStmt,
 	Block,
 	BoolLiteral,
+	BoolType,
 	BreakStmt,
 	ContinueStmt,
 	Expr,
@@ -12,6 +13,7 @@ import type {
 	FunctionDecl,
 	IfStmt,
 	IntLiteral,
+	IntType,
 	ParamDecl,
 	Program,
 	ReturnStmt,
@@ -24,6 +26,7 @@ import { Ekzemplo2Lexer } from "./generated/Ekzemplo2Lexer.js";
 import { Ekzemplo2Parser } from "./generated/Ekzemplo2Parser.js";
 import type {
 	AdditiveExprContext,
+	AssignTargetContext,
 	ArgumentListContext,
 	AssignmentStatementContext,
 	BlockContext,
@@ -127,6 +130,9 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!returnType || !isTypeNode(returnType)) {
 			throw new Error("internal error: expected type name");
 		}
+		if (returnType.kind === "ArrayType") {
+			throw new Error("array return type is not supported yet");
+		}
 		const params: ParamDecl[] = [];
 		const parameterList = ctx.parameterList();
 		if (parameterList) {
@@ -155,6 +161,9 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		const type = ctx.typeName().accept(this);
 		if (!type || !isTypeNode(type)) {
 			throw new Error("internal error: expected type name");
+		}
+		if (type.kind === "ArrayType") {
+			throw new Error("array parameter is not supported yet");
 		}
 		return {
 			kind: "ParamDecl",
@@ -308,9 +317,13 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 		if (!value || !isExpr(value)) {
 			throw new Error("internal error: expected Expr");
 		}
+		const targetCtx = ctx.assignTarget();
+		if (!targetCtx) {
+			throw new Error("internal error: expected assignTarget");
+		}
 		return {
 			kind: "AssignStmt",
-			target: { kind: "Identifier", text: ctx.IDENT().getText() },
+			target: this.buildAssignTarget(targetCtx),
 			value,
 		};
 	};
@@ -432,9 +445,8 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			};
 		}
 
-		const identToken = ctx.IDENT();
-		const assignToken = ctx.ASSIGN();
-		if (identToken && assignToken) {
+		const targetCtx = ctx.assignTarget();
+		if (targetCtx && ctx.ASSIGN()) {
 			const value = ctx.expr();
 			if (!value) {
 				throw new Error("internal error: expected Expr");
@@ -445,7 +457,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			}
 			return {
 				kind: "AssignStmt",
-				target: { kind: "Identifier", text: identToken.getText() },
+				target: this.buildAssignTarget(targetCtx),
 				value: parsed,
 			};
 		}
@@ -466,9 +478,8 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			return undefined;
 		}
 
-		const identToken = ctx.IDENT();
-		const assignToken = ctx.ASSIGN();
-		if (identToken && assignToken) {
+		const targetCtx = ctx.assignTarget();
+		if (targetCtx && ctx.ASSIGN()) {
 			const value = ctx.expr();
 			if (!value) {
 				throw new Error("internal error: expected Expr");
@@ -479,7 +490,7 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 			}
 			return {
 				kind: "AssignStmt",
-				target: { kind: "Identifier", text: identToken.getText() },
+				target: this.buildAssignTarget(targetCtx),
 				value: parsed,
 			};
 		}
@@ -574,6 +585,21 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 					args: argumentList ? this.buildArgumentList(argumentList) : [],
 				};
 			}
+			if (ctx.LBRACK() && ctx.RBRACK()) {
+				const indexCtx = ctx.expr();
+				if (!indexCtx) {
+					throw new Error("internal error: expected index expression");
+				}
+				const index = indexCtx.accept(this);
+				if (!index || !isExpr(index)) {
+					throw new Error("internal error: expected Expr");
+				}
+				return {
+					kind: "IndexExpr",
+					array: { kind: "Identifier", text: identToken.getText() },
+					index,
+				};
+			}
 			return { kind: "Identifier", text: identToken.getText() };
 		}
 		const inner = ctx.expr();
@@ -600,16 +626,55 @@ class AstBuilder extends Ekzemplo2ParserVisitor<AstResult> {
 	}
 
 	public override visitTypeName = (ctx: TypeNameContext): TypeNode => {
-		const intToken = ctx.KW_INT();
-		if (intToken) {
+		const scalarType = this.buildScalarType(ctx);
+		const lengthToken = ctx.INT();
+		if (!lengthToken) {
+			return scalarType;
+		}
+		const rawLength = lengthToken.getText();
+		const length = Number.parseInt(rawLength, 10);
+		if (!Number.isInteger(length) || length <= 0) {
+			throw new SyntaxError(`array length must be a positive integer: ${rawLength}`);
+		}
+		return {
+			kind: "ArrayType",
+			elementType: scalarType,
+			length,
+			rawLength,
+		};
+	};
+
+	private buildAssignTarget(ctx: AssignTargetContext): AssignStmt["target"] {
+		const identToken = ctx.IDENT();
+		const name = identToken.getText();
+		const indexCtx = ctx.expr();
+		if (!indexCtx) {
+			return { kind: "Identifier", text: name };
+		}
+		const index = indexCtx.accept(this);
+		if (!index || !isExpr(index)) {
+			throw new Error("internal error: expected Expr");
+		}
+		return {
+			kind: "IndexExpr",
+			array: { kind: "Identifier", text: name },
+			index,
+		};
+	}
+
+	private buildScalarType(ctx: TypeNameContext): IntType | BoolType {
+		const scalarTypeCtx = ctx.scalarType();
+		if (!scalarTypeCtx) {
+			throw new Error("internal error: expected scalarType");
+		}
+		if (scalarTypeCtx.KW_INT()) {
 			return { kind: "IntType" };
 		}
-		const boolToken = ctx.KW_BOOL();
-		if (boolToken) {
+		if (scalarTypeCtx.KW_BOOL()) {
 			return { kind: "BoolType" };
 		}
-		throw new Error("internal error: invalid typeName");
-	};
+		throw new Error("internal error: invalid scalarType");
+	}
 
 	protected override defaultResult(): AstResult | null {
 		return null;
@@ -638,12 +703,13 @@ const isExpr = (node: AstResult): node is Expr => {
 		node.kind === "Identifier" ||
 		node.kind === "BinaryExpr" ||
 		node.kind === "CastExpr" ||
-		node.kind === "CallExpr"
+		node.kind === "CallExpr" ||
+		node.kind === "IndexExpr"
 	);
 };
 
 const isTypeNode = (node: AstResult): node is TypeNode => {
-	return node.kind === "IntType" || node.kind === "BoolType";
+	return node.kind === "IntType" || node.kind === "BoolType" || node.kind === "ArrayType";
 };
 
 const isStatement = (node: AstResult): node is Statement => {

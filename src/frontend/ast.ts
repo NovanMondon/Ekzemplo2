@@ -43,9 +43,11 @@ export type VarDeclStmt = {
 
 export type AssignStmt = {
 	kind: "AssignStmt";
-	target: Identifier;
+	target: AssignTarget;
 	value: Expr;
 };
+
+export type AssignTarget = Identifier | IndexExpr;
 
 export type ExprStmt = {
 	kind: "ExprStmt";
@@ -90,7 +92,20 @@ export type ReturnStmt = {
 	value: Expr;
 };
 
-export type Expr = IntLiteral | BoolLiteral | Identifier | BinaryExpr | CastExpr | CallExpr;
+export type Expr =
+	| IntLiteral
+	| BoolLiteral
+	| Identifier
+	| BinaryExpr
+	| CastExpr
+	| CallExpr
+	| IndexExpr;
+
+export type IndexExpr = {
+	kind: "IndexExpr";
+	array: Identifier;
+	index: Expr;
+};
 
 export type CallExpr = {
 	kind: "CallExpr";
@@ -130,7 +145,14 @@ export type BoolType = {
 	kind: "BoolType";
 };
 
-export type TypeNode = IntType | BoolType;
+export type ArrayType = {
+	kind: "ArrayType";
+	elementType: IntType | BoolType;
+	length: number;
+	rawLength: string;
+};
+
+export type TypeNode = IntType | BoolType | ArrayType;
 
 export type CastExpr = {
 	kind: "CastExpr";
@@ -153,10 +175,12 @@ export type AstNode =
 	| ContinueStmt
 	| ReturnStmt
 	| CallExpr
+	| IndexExpr
 	| BinaryExpr
 	| IntLiteral
 	| BoolLiteral
 	| Identifier
 	| IntType
 	| BoolType
+	| ArrayType
 	| CastExpr;

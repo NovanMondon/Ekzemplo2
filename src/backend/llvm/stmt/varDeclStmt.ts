@@ -1,6 +1,6 @@
 import type { VarDeclStmt } from "../../../frontend/ast.js";
 import type { FunctionEmitContext } from "../env.js";
-import { llvmTypeFor, lowerExprToLlvm, typeToString } from "../expr.js";
+import { isSameType, llvmTypeFor, lowerExprToLlvm, typeToString } from "../expr.js";
 import { currentScope } from "../scope.js";
 
 export const lowerVarDeclStatement = (stmt: VarDeclStmt, ctx: FunctionEmitContext): string => {
@@ -15,9 +15,17 @@ export const lowerVarDeclStatement = (stmt: VarDeclStmt, ctx: FunctionEmitContex
 
 	const llvmType = llvmTypeFor(stmt.type);
 	let code = `  ${pointer} = alloca ${llvmType}\n`;
+	if (stmt.type.kind === "ArrayType") {
+		if (stmt.initializer) {
+			throw new Error("array initializer is not supported yet");
+		}
+		code += `  store ${llvmType} zeroinitializer, ${llvmType}* ${pointer}\n`;
+		return code;
+	}
+
 	if (stmt.initializer) {
 		const lowered = lowerExprToLlvm(stmt.initializer, ctx);
-		if (lowered.type.kind !== stmt.type.kind) {
+		if (!isSameType(lowered.type, stmt.type)) {
 			throw new Error(
 				`variable initializer type mismatch: expected ${typeToString(stmt.type)}, got ${typeToString(lowered.type)}`,
 			);

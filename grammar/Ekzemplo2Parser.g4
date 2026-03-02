@@ -21,6 +21,10 @@ parameter
   ;
 
 typeName
+  : scalarType (LBRACK INT RBRACK)?
+  ;
+
+scalarType
   : KW_INT
   | KW_BOOL
   ;
@@ -52,13 +56,18 @@ forStatement
 
 forInit
   : typeName IDENT (ASSIGN expr)?
-  | IDENT ASSIGN expr
+  | assignTarget ASSIGN expr
   | expr
   ;
 
 forUpdate
-  : IDENT ASSIGN expr
+  : assignTarget ASSIGN expr
   | expr
+  ;
+
+assignTarget
+  : IDENT
+  | IDENT LBRACK expr RBRACK
   ;
 
 whileStatement
@@ -82,7 +91,7 @@ variableDeclaration
   ;
 
 assignmentStatement
-  : IDENT ASSIGN expr SEMI
+  : assignTarget ASSIGN expr SEMI
   ;
 
 returnStatement
@@ -119,6 +128,7 @@ primaryExpr
   | KW_TRUE
   | KW_FALSE
   | IDENT LPAREN argumentList? RPAREN
+  | IDENT LBRACK expr RBRACK
   | IDENT
   | LPAREN expr RPAREN
   ;

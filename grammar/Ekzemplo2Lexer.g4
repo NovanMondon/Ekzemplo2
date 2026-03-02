@@ -32,6 +32,8 @@ GT: '>';
 
 LPAREN: '(';
 RPAREN: ')';
+LBRACK: '[';
+RBRACK: ']';
 COMMA: ',';
 LBRACE: '{';
 RBRACE: '}';
