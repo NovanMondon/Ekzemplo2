@@ -57,7 +57,10 @@ export const lowerBinaryExpr = (
 							? "sgt"
 							: "sge";
 	return {
-		code: left.code + right.code + `  ${tmp} = icmp ${cond} ${llvmType} ${left.value}, ${right.value}\n`,
+		code:
+			left.code +
+			right.code +
+			`  ${tmp} = icmp ${cond} ${llvmType} ${left.value}, ${right.value}\n`,
 		value: tmp,
 		type: boolType,
 	};

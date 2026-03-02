@@ -1,6 +1,13 @@
 import type { CastExpr } from "../../../frontend/ast.js";
 import type { FunctionEmitContext } from "../env.js";
-import { boolType, intType, isSameType, type LowerExprFn, type LoweredExpr, typeToString } from "./shared.js";
+import {
+	boolType,
+	intType,
+	isSameType,
+	type LowerExprFn,
+	type LoweredExpr,
+	typeToString,
+} from "./shared.js";
 
 export const lowerCastExpr = (
 	expr: CastExpr,
