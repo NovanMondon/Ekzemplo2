@@ -21,8 +21,7 @@ export const lowerStringLiteralExpr = (
 	const existing = ctx.stringLiteralPool.get(expr.raw);
 	const pooled = existing ?? registerStringLiteral(expr, ctx);
 	const ptrTemp = ctx.nextTemp();
-	const code =
-		`  ${ptrTemp} = getelementptr inbounds ${pooled.llvmType}, ${pooled.llvmType}* @${pooled.globalName}, i32 0, i32 0\n`;
+	const code = `  ${ptrTemp} = getelementptr inbounds ${pooled.llvmType}, ${pooled.llvmType}* @${pooled.globalName}, i32 0, i32 0\n`;
 	return {
 		code,
 		value: ptrTemp,

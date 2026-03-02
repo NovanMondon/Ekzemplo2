@@ -1,4 +1,11 @@
-import type { BoolType, CharType, Expr, IntType, StringType, TypeNode } from "../../../frontend/ast.js";
+import type {
+	BoolType,
+	CharType,
+	Expr,
+	IntType,
+	StringType,
+	TypeNode,
+} from "../../../frontend/ast.js";
 import type { FunctionEmitContext } from "../env.js";
 
 export type LoweredExpr = {
@@ -14,7 +21,9 @@ export const boolType: BoolType = { kind: "BoolType" };
 export const charType: CharType = { kind: "CharType" };
 export const stringType: StringType = { kind: "StringType" };
 
-const llvmScalarTypeFor = (type: IntType | BoolType | CharType | StringType): "i32" | "i1" | "i8" | "i8*" => {
+const llvmScalarTypeFor = (
+	type: IntType | BoolType | CharType | StringType,
+): "i32" | "i1" | "i8" | "i8*" => {
 	if (type.kind === "IntType") {
 		return "i32";
 	}

@@ -64,9 +64,7 @@ export const emitLlvmIR = (program: Program, ctx: EmitContext): string => {
 	}
 
 	const globalsIr =
-		moduleCtx.globalDefinitions.length > 0
-			? `${moduleCtx.globalDefinitions.join("\n")}\n\n`
-			: "";
+		moduleCtx.globalDefinitions.length > 0 ? `${moduleCtx.globalDefinitions.join("\n")}\n\n` : "";
 	const declaresIr = declareLines.length > 0 ? `${declareLines.join("\n")}\n\n` : "";
 	const moduleIr = `${header}${globalsIr}${declaresIr}${functionsIr}`;
 
