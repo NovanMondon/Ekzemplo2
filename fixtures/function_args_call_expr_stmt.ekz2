@@ -1,5 +1,5 @@
-int inc(int x) {
-  return x + 1;
+int inc(int y) {
+  return y + 1;
 }
 
 int add(int a, int b) {
